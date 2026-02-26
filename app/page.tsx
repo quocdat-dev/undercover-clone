@@ -1,16 +1,22 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { generateRoomCode } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
+import { getRecentRooms, saveRecentRoom, RecentRoom } from '@/lib/storage'
 
 export default function Home() {
   const router = useRouter()
   const [roomCode, setRoomCode] = useState('')
   const [isCreating, setIsCreating] = useState(false)
   const [isJoining, setIsJoining] = useState(false)
+  const [recentRooms, setRecentRooms] = useState<RecentRoom[]>([])
+
+  useEffect(() => {
+    setRecentRooms(getRecentRooms())
+  }, [])
 
   const handleCreateRoom = async () => {
     setIsCreating(true)
@@ -29,6 +35,7 @@ export default function Home() {
 
       if (error) throw error
 
+      saveRecentRoom(code)
       router.push(`/room/${code}`)
     } catch (error) {
       console.error('Error creating room:', error)
@@ -38,8 +45,11 @@ export default function Home() {
     }
   }
 
-  const handleJoinRoom = async () => {
-    if (!roomCode.trim()) {
+  const handleJoinRoom = async (codeToJoin?: string) => {
+    const code = typeof codeToJoin === 'string' ? codeToJoin : roomCode
+    const formattedCode = code.trim().toUpperCase()
+
+    if (!formattedCode) {
       alert('Vui lòng nhập mã phòng')
       return
     }
@@ -49,14 +59,15 @@ export default function Home() {
       const { data, error } = await supabase
         .from('rooms')
         .select('code')
-        .eq('code', roomCode.toUpperCase())
+        .eq('code', formattedCode)
         .single()
 
       if (error || !data) {
         throw new Error('Không tìm thấy phòng')
       }
 
-      router.push(`/room/${roomCode.toUpperCase()}`)
+      saveRecentRoom(formattedCode)
+      router.push(`/room/${formattedCode}`)
     } catch (error) {
       console.error('Error joining room:', error)
       alert('Không tìm thấy phòng. Vui lòng kiểm tra lại mã phòng.')
@@ -121,13 +132,33 @@ export default function Home() {
               <Button
                 variant="outline"
                 className="w-full h-10 text-sm font-medium"
-                onClick={handleJoinRoom}
+                onClick={() => handleJoinRoom()}
                 isDisabled={isJoining || !roomCode.trim()}
               >
                 👋 {isJoining ? 'Đang kết nối...' : 'Vào phòng'}
               </Button>
             </div>
           </div>
+
+          {/* Recent Rooms */}
+          {recentRooms.length > 0 && (
+            <div className="space-y-3 pt-4 border-t border-border animate-fade-in">
+              <h2 className="text-xs font-semibold text-muted uppercase tracking-wider">Phòng của bạn</h2>
+              <div className="flex flex-wrap gap-2">
+                {recentRooms.map((room) => (
+                  <Button
+                    key={room.code}
+                    variant="outline"
+                    className="h-8 text-xs font-mono px-3 hover:bg-muted/10"
+                    onClick={() => handleJoinRoom(room.code)}
+                    isDisabled={isJoining}
+                  >
+                    Phòng {room.code}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}

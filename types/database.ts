@@ -3,6 +3,7 @@ export type RoomStatus = 'waiting' | 'playing' | 'finished'
 export interface RoomSettings {
   undercoverCount: number
   mrWhiteCount: number
+  specialRoles?: string[]
 }
 
 export interface Room {
@@ -22,6 +23,8 @@ export interface Player {
   id: string
   name: string
   role: 'civilian' | 'undercover' | 'mr_white' | null
+  special_role?: string | null
+  state?: Record<string, any>
   is_alive: boolean
   order: number
 }

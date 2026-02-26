@@ -82,6 +82,27 @@ export function assignRoles(players: Player[], settings?: RoomSettings): Player[
     mrWhiteCount = normalized.mrWhiteCount
   }
 
+  // Pre-calculate special role distribution
+  const specialRolesList: string[] = []
+  if (settings?.specialRoles) {
+    for (const roleId of settings.specialRoles) {
+      if (roleId === 'lovers' || roleId === 'duelists') {
+        specialRolesList.push(roleId, roleId)
+      } else {
+        specialRolesList.push(roleId)
+      }
+    }
+  }
+
+  // Assign special roles randomly across all players
+  // One player can only have one special role (max)
+  const specialRoleAssignments = new Map<number, string>()
+  const shuffledIndicesForSpecial = [...Array(totalPlayers).keys()].sort(() => Math.random() - 0.5)
+  
+  for (let i = 0; i < Math.min(specialRolesList.length, totalPlayers); i++) {
+    specialRoleAssignments.set(shuffledIndicesForSpecial[i], specialRolesList[i])
+  }
+
   const assignedPlayers = shuffled.map((player, index) => {
     let role: Player['role'] = 'civilian'
 
@@ -90,10 +111,14 @@ export function assignRoles(players: Player[], settings?: RoomSettings): Player[
     } else if (index < undercoverCount + mrWhiteCount) {
       role = 'mr_white'
     }
+    
+    const special_role = specialRoleAssignments.get(index)
 
     return {
       ...player,
       role,
+      special_role: special_role || null,
+      state: {}, // Reset state
     }
   })
 

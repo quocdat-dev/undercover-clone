@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { startGame } from '@/lib/game'
-import { getDefaultRoleSettings, getRoleLimits } from '@/lib/role-utils'
+import { startGame, restartGame } from '@/lib/game'
+import { getDefaultRoleSettings, getRoleLimits, SPECIAL_ROLES } from '@/lib/role-utils'
 import type { Room, Player } from '@/types/database'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,6 +12,8 @@ import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Slider } from '@/components/ui/slider'
+import { Select, ListBox, ListBoxItem } from '@heroui/react'
+import { removeRecentRoom } from '@/lib/storage'
 
 type GameMode = 'random' | 'pack'
 
@@ -25,13 +27,19 @@ export default function RoomPage() {
   const [gameMode, setGameMode] = useState<GameMode>('random')
   const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [availableCategories, setAvailableCategories] = useState<string[]>([])
-  const [playerCount, setPlayerCount] = useState(6)
+  const [playerNames, setPlayerNames] = useState<string[]>(['Người chơi 1', 'Người chơi 2', 'Người chơi 3'])
+  const playerCount = playerNames.length
   const [undercoverCount, setUndercoverCount] = useState(1)
   const [mrWhiteCount, setMrWhiteCount] = useState(1)
+  const [specialRoles, setSpecialRoles] = useState<string[]>([])
   const [isDeleting, setIsDeleting] = useState(false)
   const [isStarting, setIsStarting] = useState(false)
+  const [isRestarting, setIsRestarting] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  const [showRestartConfirm, setShowRestartConfirm] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isEditingPlayers, setIsEditingPlayers] = useState(false)
 
   // Auto-adjust roles when player count changes
   useEffect(() => {
@@ -112,6 +120,9 @@ export default function RoomPage() {
 
       if (error) throw error
 
+      // Remove from recent rooms local storage
+      removeRecentRoom(code)
+
       addToast({
         title: 'Thành công',
         description: 'Phòng đã được xóa',
@@ -168,19 +179,29 @@ export default function RoomPage() {
       })
     }
 
+    // Validate special roles
+    for (const roleId of specialRoles) {
+      const roleDef = SPECIAL_ROLES.find(r => r.id === roleId)
+      if (roleDef && playerCount < roleDef.minPlayers) {
+        addToast({
+          title: 'Lỗi',
+          description: `Vai trò ${roleDef.name} cần ít nhất ${roleDef.minPlayers} người chơi (hiện có ${playerCount})`,
+          variant: 'error',
+        })
+        return
+      }
+    }
+
     setIsStarting(true)
 
-    // Create player list automatically
-    const players: Player[] = []
-    for (let i = 1; i <= playerCount; i++) {
-      players.push({
-        id: crypto.randomUUID(),
-        name: `Người chơi ${i}`,
-        role: null,
-        is_alive: true,
-        order: i,
-      })
-    }
+    // Create player list using input names
+    const players: Player[] = playerNames.map((name, index) => ({
+      id: crypto.randomUUID(),
+      name: name.trim() || `Người chơi ${index + 1}`,
+      role: null,
+      is_alive: true,
+      order: index + 1,
+    }))
 
     // Update room with players AND settings
     const { error: updateError } = await supabase
@@ -189,7 +210,8 @@ export default function RoomPage() {
         players,
         settings: {
           undercoverCount,
-          mrWhiteCount
+          mrWhiteCount,
+          specialRoles
         }
       })
       .eq('code', code)
@@ -223,6 +245,28 @@ export default function RoomPage() {
     }
   }
 
+  const handleRestartGame = async () => {
+    setIsRestarting(true)
+    const result = await restartGame(code)
+    if (!result.success) {
+      addToast({
+        title: 'Lỗi',
+        description: result.error || 'Không thể khởi động lại game',
+        variant: 'error',
+      })
+      setIsRestarting(false)
+    } else {
+      addToast({
+        title: 'Thành công',
+        description: 'Đã tạo ván mới!',
+        variant: 'success',
+      })
+      setIsRestarting(false)
+      setShowRestartConfirm(false)
+      router.push(`/game/${code}`)
+    }
+  }
+
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background text-foreground">
@@ -238,7 +282,7 @@ export default function RoomPage() {
   }
 
   const totalEnemies = undercoverCount + mrWhiteCount
-  const canStart = playerCount >= 3 && room.status === 'waiting' && totalEnemies > 0
+  const canStart = playerCount >= 3 && (room.status === 'waiting' || isEditingPlayers) && totalEnemies > 0
   const civilianCount = playerCount - undercoverCount - mrWhiteCount
 
   // Calculate dynamic limits
@@ -275,7 +319,7 @@ export default function RoomPage() {
       </div>
 
       {/* Main Content */}
-      {room.status === 'waiting' && (
+      {(room.status === 'waiting' || isEditingPlayers) && (
         <div className="flex-1 flex flex-col items-center py-8 px-4 pb-20">
 
           <div className="w-full max-w-sm mb-6 flex justify-between items-center px-1">
@@ -283,17 +327,57 @@ export default function RoomPage() {
             <Badge variant="outline" className="font-mono">{playerCount} Người</Badge>
           </div>
 
-          {/* Player Count Slider */}
+          {/* Player Names */}
           <div className="w-full max-w-sm mb-6 border border-border bg-background p-5 rounded-sm">
-            <label className="text-xs font-semibold text-muted uppercase tracking-widest mb-4 block">Tổng Số Người Chơi</label>
-            <Slider
-              value={playerCount}
-              onValueChange={setPlayerCount}
-              min={3}
-              max={20}
-              step={1}
-              className="w-full"
-            />
+            <label className="text-xs font-semibold text-muted uppercase tracking-widest mb-4 block">Người Chơi</label>
+            <div className="space-y-2 mb-4">
+              {playerNames.map((name, index) => (
+                <div key={index} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => {
+                      const newNames = [...playerNames]
+                      newNames[index] = e.target.value
+                      setPlayerNames(newNames)
+                    }}
+                    placeholder={`Người chơi ${index + 1}`}
+                    maxLength={20}
+                    className="flex-1 px-3 h-10 bg-transparent border border-border rounded-sm focus:border-foreground focus:ring-1 focus:ring-foreground text-sm tracking-wide text-foreground placeholder-muted transition-all outline-none"
+                  />
+                  {playerNames.length > 3 && (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-10 w-10 shrink-0 text-muted hover:text-red-500 hover:border-red-500 hover:bg-red-50 transition-colors"
+                      onClick={() => {
+                        const newNames = playerNames.filter((_, i) => i !== index)
+                        setPlayerNames(newNames)
+
+                        // Also adjust roles if needed
+                        const { maxUndercover, maxMrWhite } = getRoleLimits(newNames.length, undercoverCount, mrWhiteCount)
+                        if (undercoverCount > maxUndercover) setUndercoverCount(Math.max(0, maxUndercover))
+                        if (mrWhiteCount > maxMrWhite) setMrWhiteCount(Math.max(0, maxMrWhite))
+                      }}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {playerNames.length < 20 && (
+              <Button
+                variant="outline"
+                className="w-full h-10 text-sm font-medium border-dashed text-muted hover:text-foreground hover:border-foreground transition-colors"
+                onClick={() => setPlayerNames([...playerNames, `Người chơi ${playerNames.length + 1}`])}
+              >
+                + Thêm người chơi
+              </Button>
+            )}
           </div>
 
           {/* Role Distribution Card */}
@@ -306,27 +390,27 @@ export default function RoomPage() {
                 {/* Civilians */}
                 <div className="flex items-center justify-between p-4">
                   <span className="text-sm font-medium">Dân thường</span>
-                  <Badge variant="default" className="w-8 justify-center rounded-sm">
+                  <div className="w-8 h-8 flex items-center justify-center bg-muted/10 rounded-sm font-mono text-sm border border-border">
                     {civilianCount}
-                  </Badge>
+                  </div>
                 </div>
 
                 {/* Undercover */}
                 <div className="flex items-center justify-between p-4 bg-muted/5">
                   <span className="text-sm font-medium">Kẻ nằm vùng</span>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1">
                     <button
-                      className="w-6 h-6 flex items-center justify-center border border-border rounded-sm hover:bg-notion-hover text-muted disabled:opacity-50"
+                      className="w-8 h-8 flex items-center justify-center border border-border rounded-sm hover:bg-muted/10 text-muted disabled:opacity-30 transition-colors"
                       onClick={() => setUndercoverCount(Math.max(0, undercoverCount - 1))}
                       disabled={undercoverCount <= 0}
                     >
                       −
                     </button>
-                    <Badge variant="secondary" className="w-8 justify-center rounded-sm shadow-none">
+                    <div className="w-8 h-8 flex items-center justify-center bg-muted/10 rounded-sm font-mono text-sm border border-border">
                       {undercoverCount}
-                    </Badge>
+                    </div>
                     <button
-                      className="w-6 h-6 flex items-center justify-center border border-border rounded-sm hover:bg-notion-hover text-muted disabled:opacity-50"
+                      className="w-8 h-8 flex items-center justify-center border border-border rounded-sm hover:bg-muted/10 text-muted disabled:opacity-30 transition-colors"
                       onClick={() => setUndercoverCount(Math.min(maxUndercover, undercoverCount + 1))}
                       disabled={undercoverCount >= maxUndercover}
                     >
@@ -338,19 +422,19 @@ export default function RoomPage() {
                 {/* Mr. White */}
                 <div className="flex items-center justify-between p-4 bg-muted/5">
                   <span className="text-sm font-medium">Mr. White</span>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1">
                     <button
-                      className="w-6 h-6 flex items-center justify-center border border-border rounded-sm hover:bg-notion-hover text-muted disabled:opacity-50"
+                      className="w-8 h-8 flex items-center justify-center border border-border rounded-sm hover:bg-muted/10 text-muted disabled:opacity-30 transition-colors"
                       onClick={() => setMrWhiteCount(Math.max(0, mrWhiteCount - 1))}
                       disabled={mrWhiteCount <= 0}
                     >
                       −
                     </button>
-                    <Badge variant="outline" className="w-8 justify-center rounded-sm">
+                    <div className="w-8 h-8 flex items-center justify-center bg-muted/10 rounded-sm font-mono text-sm border border-border">
                       {mrWhiteCount}
-                    </Badge>
+                    </div>
                     <button
-                      className="w-6 h-6 flex items-center justify-center border border-border rounded-sm hover:bg-notion-hover text-muted disabled:opacity-50"
+                      className="w-8 h-8 flex items-center justify-center border border-border rounded-sm hover:bg-muted/10 text-muted disabled:opacity-30 transition-colors"
                       onClick={() => setMrWhiteCount(Math.min(maxMrWhite, mrWhiteCount + 1))}
                       disabled={mrWhiteCount >= maxMrWhite}
                     >
@@ -361,6 +445,92 @@ export default function RoomPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Special Roles Selector */}
+          <div className="w-full max-w-sm mb-6 flex flex-col">
+            <Dialog>
+              <DialogTrigger className="w-full text-left" asChild>
+                <div role="button" className="w-full outline-none">
+                  <Card className="w-full cursor-pointer hover:bg-muted/5 transition-colors border-dashed border-2 hover:border-solid hover:border-foreground">
+                    <CardContent className="p-4 flex items-center justify-between">
+                      <div>
+                        <div className="text-sm font-semibold tracking-wide mb-1">Vai Trò Đặc Biệt</div>
+                        <div className="text-[11px] text-muted leading-tight">Thêm năng lực ẩn cho người chơi</div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {specialRoles.length > 0 ? (
+                          <span className="flex items-center justify-center bg-foreground text-background text-xs font-mono font-bold w-6 h-6 rounded-full shadow-sm">
+                            {specialRoles.length}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted font-mono tracking-widest uppercase">Trống</span>
+                        )}
+                        <svg className="w-4 h-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" /></svg>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </DialogTrigger>
+              <DialogContent className="max-h-[85vh] flex flex-col p-0 gap-0 sm:max-w-md rounded-lg overflow-hidden border-border shadow-2xl">
+                <DialogHeader>
+                  <div className="px-6 pt-6 pb-4 border-b border-border bg-background text-left w-full">
+                    <DialogTitle className="font-serif text-xl">Vai Trò Đặc Biệt</DialogTitle>
+                    <div className="text-xs text-muted mt-1.5 leading-relaxed">Người chơi chọn trúng vai trò này vẫn sẽ là Dân thường hoặc Phản diện, nhưng có thêm quyền năng mới.</div>
+                  </div>
+                </DialogHeader>
+                <div className="overflow-y-auto flex-1 flex flex-col p-4 bg-muted/5 space-y-2">
+                  {SPECIAL_ROLES.map((role) => {
+                    const isEnabled = specialRoles.includes(role.id)
+                    const isDisabled = playerCount < role.minPlayers
+
+                    return (
+                      <div
+                        key={role.id}
+                        className={`flex flex-col p-4 rounded-md border transition-all cursor-pointer select-none relative bg-background ${isDisabled ? 'opacity-50 grayscale border-transparent' :
+                            isEnabled ? 'border-foreground shadow-sm ring-1 ring-foreground/20' :
+                              'border-border hover:border-foreground/40 hover:shadow-sm'
+                          }`}
+                        onClick={() => {
+                          if (isDisabled) return
+                          if (isEnabled) setSpecialRoles(specialRoles.filter(id => id !== role.id))
+                          else setSpecialRoles([...specialRoles, role.id])
+                        }}
+                      >
+                        <div className="flex items-start gap-4">
+                          <div className={`w-10 h-10 rounded-md flex items-center justify-center shrink-0 shadow-inner ${role.color} text-white mt-0.5`}>
+                            <span className="text-lg font-bold font-serif">{role.name.charAt(0)}</span>
+                          </div>
+                          <div className="flex-1 min-w-0 pr-8 text-left">
+                            <h4 className={`font-semibold text-sm mb-1 tracking-wide ${isEnabled ? 'text-foreground' : 'text-muted-foreground'}`}>
+                              {role.name}
+                            </h4>
+                            <p className="text-xs text-muted leading-relaxed">
+                              {role.description}
+                            </p>
+                            {isDisabled && (
+                              <span className="text-[10px] text-red-500 font-bold block mt-2 uppercase tracking-widest">
+                                ! Cần ít nhất {role.minPlayers} người
+                              </span>
+                            )}
+                          </div>
+                          <div className="absolute right-5 top-1/2 -translate-y-1/2">
+                            <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-all duration-200 ${isEnabled ? 'bg-foreground border-foreground text-background scale-110' : 'border-border'
+                              }`}>
+                              {isEnabled && (
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" viewBox="0 0 24 24">
+                                  <path d="M5 13l4 4L19 7" />
+                                </svg>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
 
           {/* Words Setting */}
           <Card className="w-full max-w-sm mb-8">
@@ -397,19 +567,26 @@ export default function RoomPage() {
 
                     {gameMode === 'pack' && (
                       <div className="pt-2 animate-fade-in space-y-2">
-                        <label className="text-xs text-muted uppercase tracking-wider">Danh sách chủ đề</label>
-                        <select
-                          value={selectedCategory}
-                          onChange={(e) => setSelectedCategory(e.target.value)}
-                          className="w-full rounded-sm border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground"
+                        <label className="text-xs text-muted uppercase tracking-wider block mb-2">Danh sách chủ đề</label>
+                        <Select
+                          aria-label="Danh sách chủ đề"
+                          placeholder="-- Chọn 1 chủ đề --"
+                          selectedKey={selectedCategory}
+                          onSelectionChange={(key) => setSelectedCategory(key as string)}
                         >
-                          <option value="">-- Chọn 1 chủ đề --</option>
-                          {availableCategories.map((cat) => (
-                            <option key={cat} value={cat}>
-                              {cat.charAt(0).toUpperCase() + cat.slice(1)}
-                            </option>
-                          ))}
-                        </select>
+                          <Select.Trigger className="w-full rounded-sm border border-border bg-background px-3 h-10 text-sm focus-visible:outline-none flex items-center justify-between data-[focus-visible=true]:ring-1 data-[focus-visible=true]:ring-foreground">
+                            <Select.Value />
+                          </Select.Trigger>
+                          <Select.Popover className="border border-border rounded-sm bg-background p-1 shadow-md w-[var(--trigger-width)]">
+                            <ListBox className="space-y-0.5 outline-none">
+                              {availableCategories.map((cat) => (
+                                <ListBoxItem key={cat} id={cat} textValue={cat.charAt(0).toUpperCase() + cat.slice(1)} className="px-2 py-1.5 text-sm hover:bg-muted/10 data-[focused=true]:bg-muted/10 rounded-sm cursor-pointer outline-none">
+                                  {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                                </ListBoxItem>
+                              ))}
+                            </ListBox>
+                          </Select.Popover>
+                        </Select>
                       </div>
                     )}
                   </div>
@@ -418,20 +595,32 @@ export default function RoomPage() {
             </CardContent>
           </Card>
 
-          {/* Start Button */}
-          <Button
-            onClick={handleStartGame}
-            isDisabled={!canStart || (gameMode === 'pack' && !selectedCategory) || isStarting || civilianCount <= 0}
-            className="w-full max-w-sm h-12 text-sm font-semibold tracking-wide"
-            variant="primary"
-          >
-            {isStarting ? 'Đang tải...' : 'BẮT ĐẦU VÁN'}
-          </Button>
+          {/* Start Button & Cancel Button if Editing */}
+          <div className="w-full max-w-sm space-y-3">
+            <Button
+              onClick={handleStartGame}
+              isDisabled={!canStart || (gameMode === 'pack' && !selectedCategory) || isStarting || civilianCount <= 0}
+              className="w-full h-12 text-sm font-semibold tracking-wide"
+              variant="primary"
+            >
+              {isStarting ? 'Đang tải...' : isEditingPlayers ? 'LƯU & BẮT ĐẦU VÁN MỚI' : 'BẮT ĐẦU VÁN'}
+            </Button>
+
+            {isEditingPlayers && (
+              <Button
+                onClick={() => setIsEditingPlayers(false)}
+                variant="outline"
+                className="w-full h-12 text-sm font-medium"
+              >
+                Hủy Chỉnh Sửa
+              </Button>
+            )}
+          </div>
         </div>
       )}
 
       {/* Playing State */}
-      {room.status === 'playing' && (
+      {room.status === 'playing' && !isEditingPlayers && (
         <div className="flex-1 flex flex-col items-center justify-center px-4">
           <Card className="w-full max-w-sm">
             <CardContent className="p-8 text-center space-y-6">
@@ -442,9 +631,74 @@ export default function RoomPage() {
               <Button
                 onClick={() => router.push(`/game/${code}`)}
                 className="w-full font-medium"
+                variant="primary"
               >
                 Vào Game Nào
               </Button>
+
+              <div className="pt-4 space-y-3 border-t border-border">
+                <Button
+                  variant="outline"
+                  className="w-full h-10 text-sm"
+                  onClick={() => {
+                    // Populate current players into the editing state inputs
+                    const currentNames = (room.players || []).map(p => p.name);
+                    if (currentNames.length) {
+                      setPlayerNames(currentNames);
+                    }
+                    setIsEditingPlayers(true);
+                  }}
+                >
+                  Cập Nhật Người Chơi
+                </Button>
+
+                <Dialog open={showRestartConfirm} onOpenChange={setShowRestartConfirm}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="w-full h-10 text-sm">
+                      Chơi Lại (Giữ Danh Sách)
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle className="font-serif">Xác nhận chơi lại</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <p className="text-sm">Bạn có chắc chắn muốn bỏ ván hiện tại và bắt đầu ván mới với bộ từ khác không?</p>
+                      <Button
+                        className="w-full"
+                        onClick={handleRestartGame}
+                        isDisabled={isRestarting}
+                      >
+                        {isRestarting ? 'Đang tạo...' : 'Xác Nhận Chơi Lại'}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="w-full h-10 text-sm text-red-500 hover:text-red-400 hover:bg-neutral-900 border-red-900/50 hover:border-red-800">
+                      Xóa Phòng Này
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle className="font-serif text-red-500">Xác nhận Xóa Phòng</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <p className="text-sm">Hành động này sẽ xóa hoàn toàn phòng chơi và lịch sử của phòng. Bạn có chắc chắn không?</p>
+                      <Button
+                        variant="destructive"
+                        className="w-full"
+                        onClick={handleDeleteRoom}
+                        isDisabled={isDeleting}
+                      >
+                        {isDeleting ? 'Đang xóa...' : 'Vâng, Xóa Phòng'}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
             </CardContent>
           </Card>
         </div>
