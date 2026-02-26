@@ -1,0 +1,116 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+
+@theme {
+  --font-sans: var(--font-ibm-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-ibm-plex-serif), ui-serif, Georgia, serif;
+  
+  /* Notion Color Story */
+  --color-notion-bg: #FFFFFF;
+  --color-notion-bg-dark: #191919;
+  --color-notion-text: #37352F;
+  --color-notion-text-dark: rgba(255, 255, 255, 0.9);
+  --color-notion-gray: #787774;
+  --color-notion-gray-dark: rgba(255, 255, 255, 0.5);
+  --color-notion-border: #E9E9E7;
+  --color-notion-border-dark: #2F2F2F;
+  --color-notion-hover: #EFEFED;
+  --color-notion-hover-dark: #2F2F2F;
+  --color-notion-shadow: rgba(15, 15, 15, 0.05);
+
+  --color-background: var(--color-notion-bg);
+  --color-foreground: var(--color-notion-text);
+  --color-muted: var(--color-notion-gray);
+  --color-border: var(--color-notion-border);
+}
+
+@layer base {
+  .dark {
+    --color-background: var(--color-notion-bg-dark);
+    --color-foreground: var(--color-notion-text-dark);
+    --color-border: var(--color-notion-border-dark);
+    --color-muted: var(--color-notion-gray-dark);
+  }
+}
+
+body {
+  font-feature-settings: "rlig" 1, "calt" 1;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+/* Animation Transitions */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.3s ease-out;
+}
+
+.animate-bounce-slow {
+  animation: bounce 1s ease-in-out infinite;
+}
+
+.animate-pulse-slow {
+  animation: pulse 2s ease-in-out infinite;
+}
