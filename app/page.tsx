@@ -89,13 +89,13 @@ export default function Home() {
       <div className="w-full max-w-md relative z-10 flex flex-col gap-10">
 
         {/* Header Section */}
-        <div className="flex flex-col items-center sm:items-start text-center sm:text-left animate-fade-in group">
+        <div className="flex flex-col items-start text-left animate-fade-in group">
           <div className="inline-flex items-center gap-2 px-3 py-1 mb-6 rounded-full bg-muted/20 border border-border text-[11px] font-semibold text-muted tracking-widest uppercase transition-all hover:bg-muted/40 cursor-default">
             <span className="w-1.5 h-1.5 rounded-full bg-foreground animate-pulse-slow"></span>
             Undercover version 1.0
           </div>
 
-          <div className="relative group/title cursor-default w-fit mx-auto sm:mx-0">
+          <div className="relative group/title cursor-default w-fit">
             <h1 className="text-5xl sm:text-7xl font-bold font-serif tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-foreground via-muted to-foreground bg-[length:200%_auto] animate-text-shimmer transition-all duration-500 group-hover/title:tracking-[0.03em] drop-shadow-sm">
               Undercover
             </h1>
@@ -106,17 +106,40 @@ export default function Home() {
             <div className="absolute -bottom-1 left-0 h-[2px] w-0 bg-gradient-to-r from-transparent via-foreground/80 to-transparent rounded-full transition-all duration-700 ease-out group-hover/title:w-full opacity-0 group-hover/title:opacity-100"></div>
           </div>
 
-          <div className="mt-4 flex sm:justify-start justify-center">
-            <div className="group/badge relative inline-flex items-center gap-2 px-5 py-2 rounded-full border border-border bg-background shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1 cursor-default overflow-hidden">
-              <div className="absolute inset-0 bg-foreground group-hover/badge:translate-y-0 translate-y-full transition-transform duration-300 ease-out z-0"></div>
-              <span className="relative z-10 text-xs font-semibold text-muted group-hover/badge:text-background/80 transition-colors duration-300 tracking-wider">By</span>
-              <span className="relative z-10 text-sm font-bold font-serif text-foreground group-hover/badge:text-background transition-colors duration-300 tracking-wide whitespace-nowrap">Lạt và Đi</span>
+          <div className="mt-4 flex sm:justify-start">
+            <div className="relative inline-flex items-center gap-2.5 px-5 py-2 rounded-full border border-yellow-500/50 bg-background shadow-[0_0_12px_rgba(234,179,8,0.15)] overflow-hidden">
+              {/* Golden gradient background - Continuous sweep */}
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-yellow-500/10 to-transparent animate-shimmer-sweep z-0"></div>
+
+              <span className="relative z-10 text-xs font-semibold text-muted tracking-wider">By</span>
+              <span className="relative z-10 text-sm font-bold font-serif text-yellow-600 dark:text-yellow-400 tracking-wide whitespace-nowrap flex items-center gap-1.5">
+                Lạt và Đi
+                {/* Sparkle Icon */}
+                <svg className="w-3.5 h-3.5 text-yellow-500 animate-bounce-slow" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.25 5.513a.96.96 0 010 .974L13 15l-2.25-5.513a.96.96 0 010-.974L13 3z" />
+                </svg>
+              </span>
             </div>
           </div>
 
-          <p className="text-muted text-base font-sans mt-7 max-w-[95%] leading-relaxed">
-            Hẹ hẹ mình không thích trả phí thì mình làm thôi.
-          </p>
+          <div className="mt-10 relative animate-slide-in" style={{ animationDelay: '0.2s' }}>
+            {/* Background Gradient container - Breathing effect */}
+            <div className="absolute inset-0 bg-gradient-to-r from-foreground/5 to-transparent rounded-xl sm:rounded-2xl -ml-4 pl-4 blur-sm"></div>
+
+            <blockquote className="relative pl-5 sm:pl-6 border-l-[3px] border-foreground/30 max-w-[95%] sm:max-w-[90%] py-1 transition-all duration-300">
+              {/* Decorative Quote Mark */}
+              <div className="absolute -left-3 -top-4 w-7 h-7 rounded-full bg-background border border-border flex items-center justify-center text-lg italic shadow-sm z-10 hover:scale-110 hover:-rotate-12 hover:shadow-md transition-all duration-300 cursor-default">
+                &quot;
+              </div>
+
+              <p className="text-foreground/90 text-sm sm:text-base font-serif italic leading-relaxed tracking-wide transition-all duration-300">
+                Hẹ hẹ mình <span className="relative inline-block px-1 mx-0.5 font-semibold text-background z-10 before:absolute before:inset-0 before:bg-foreground before:rounded-sm before:-z-10">không thích trả phí</span> thì mình làm thôi.
+              </p>
+
+              {/* Subtle accent dot */}
+              <div className="absolute -left-[7.5px] -bottom-1 w-3 h-3 rounded-full border-2 border-background bg-foreground"></div>
+            </blockquote>
+          </div>
         </div>
 
         {/* Action Card */}
@@ -158,7 +181,7 @@ export default function Home() {
                 onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
                 placeholder="Mã 6 số"
                 maxLength={6}
-                className="w-full px-4 h-12 bg-transparent border border-border rounded-lg focus:border-foreground focus:ring-1 focus:ring-foreground text-lg tracking-[0.25em] text-foreground placeholder:text-muted/40 transition-all outline-none uppercase font-mono font-bold"
+                className="w-full px-4 h-12 bg-transparent border border-border rounded-lg focus:border-foreground focus:ring-1 focus:ring-foreground text-lg tracking-[0.25em] text-foreground placeholder:text-muted/40 transition-all outline-none uppercase font-bold"
                 onKeyPress={(e) => {
                   if (e.key === 'Enter') {
                     handleJoinRoom()
@@ -168,11 +191,18 @@ export default function Home() {
 
               <Button
                 variant="outline"
-                className="w-24 shrink-0 h-12 text-sm font-bold tracking-wide transition-all hover:border-foreground hover:bg-foreground hover:text-background"
+                className="w-24 shrink-0 h-12 text-sm font-bold tracking-wide transition-all duration-300 relative overflow-hidden group/joinbg hover:border-foreground hover:shadow-sm active:scale-95"
                 onClick={() => handleJoinRoom()}
                 isDisabled={isJoining || !roomCode.trim()}
               >
-                {isJoining ? '...' : 'Vào'}
+                <div className="absolute inset-0 w-full h-full bg-foreground transform translate-y-full group-hover/joinbg:translate-y-0 transition-transform duration-300 ease-out z-0"></div>
+                <span className="relative z-10 group-hover/joinbg:text-background transition-colors duration-300 flex items-center justify-center gap-1">
+                  {isJoining ? '...' : (
+                    <>
+                      Vào
+                    </>
+                  )}
+                </span>
               </Button>
             </div>
           </div>

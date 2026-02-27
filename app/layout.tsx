@@ -16,8 +16,8 @@ const ibmPlexSerif = IBM_Plex_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "Undercover Clone",
-  description: "Web clone of Undercover game",
+  title: "Undercover by Lạt và Đi",
+  description: "Web game Undercover phiên bản 1.0 by Lạt và Đi",
 };
 
 export default function RootLayout({
