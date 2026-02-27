@@ -66,6 +66,7 @@ export default function GamePage() {
   const [isAmnesicMode, setIsAmnesicMode] = useState(false)
   const [amnesicTargetPlayer, setAmnesicTargetPlayer] = useState<Player | null>(null)
   const [showLeaderboard, setShowLeaderboard] = useState(false)
+  const [boomerangRevealPlayer, setBoomerangRevealPlayer] = useState<Player | null>(null)
 
   useEffect(() => {
     const loadGame = async () => {
@@ -202,9 +203,11 @@ export default function GamePage() {
     }
 
     if (!result.shouldEliminate) {
-      // Boomerang blocked — just update state
+      // Boomerang blocked — update state and show reveal modal
       await supabase.from('rooms').update({ players: result.updatedPlayers }).eq('code', code)
+      const blockedPlayer = players.find(p => p.id === playerId)
       setConfirmVotePlayer(null)
+      setBoomerangRevealPlayer(blockedPlayer || null)
       setIsProcessingElimination(false)
       return
     }
@@ -679,6 +682,48 @@ export default function GamePage() {
               <p className="text-sm font-semibold text-foreground mb-8">đã bị phát hiện là <span className="text-red-500">{eliminationRevealPlayer.role === 'civilian' ? 'Dân thường' : eliminationRevealPlayer.role === 'undercover' ? 'Kẻ nằm vùng' : 'Kẻ giấu mặt'}</span></p>
 
               <Button onClick={closeEliminationReveal} variant="primary" className="w-full font-medium h-10">
+                XÁC NHẬN
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Boomerang Reveal */}
+      {boomerangRevealPlayer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-background/80 backdrop-blur-sm animate-fade-in">
+          <Card className="w-full max-w-[320px] rounded-sm shadow-xl border-border bg-background">
+            <CardContent className="p-8 flex flex-col items-center">
+              <h3 className="text-[10px] font-semibold uppercase tracking-widest text-muted mb-6">Hiệu Ứng Đặc Biệt</h3>
+
+              <div className="relative mb-6">
+                <div className={cn(
+                  "w-24 h-24 rounded-full flex items-center justify-center text-4xl font-serif font-semibold shadow-inner border border-border",
+                  getPlayerColorClass(boomerangRevealPlayer.id)
+                )}>
+                  {boomerangRevealPlayer.name.charAt(0).toUpperCase()}
+                </div>
+                <div className="absolute -bottom-2 -right-2 bg-orange-500 border border-orange-400 rounded-full w-10 h-10 flex items-center justify-center shadow-sm text-xl z-20">
+                  <span className="text-lg">🪃</span>
+                </div>
+              </div>
+
+              <h2 className="text-xl font-medium text-center mb-1 text-foreground">{boomerangRevealPlayer.name}</h2>
+              <p className="text-sm font-semibold text-center text-foreground mb-2">
+                đã kích hoạt <span className="text-orange-500">Boomerang!</span>
+              </p>
+              <p className="text-xs text-muted text-center mb-8 leading-relaxed">
+                Phiếu bầu bị dội lại! Người chơi này được miễn loại lần này.
+              </p>
+
+              <Button
+                onClick={() => {
+                  setBoomerangRevealPlayer(null)
+                  setGamePhase('discussion')
+                }}
+                variant="primary"
+                className="w-full font-medium h-10"
+              >
                 XÁC NHẬN
               </Button>
             </CardContent>

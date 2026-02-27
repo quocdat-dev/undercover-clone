@@ -113,7 +113,7 @@ export default function Home() {
 
               <span className="relative z-10 text-xs font-semibold text-muted tracking-wider">By</span>
               <span className="relative z-10 text-sm font-bold font-serif text-yellow-600 dark:text-yellow-400 tracking-wide whitespace-nowrap flex items-center gap-1.5">
-                Lạt và Đi
+                Lạt và Đy
                 {/* Sparkle Icon */}
                 <svg className="w-3.5 h-3.5 text-yellow-500 animate-bounce-slow" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.25 5.513a.96.96 0 010 .974L13 15l-2.25-5.513a.96.96 0 010-.974L13 3z" />
