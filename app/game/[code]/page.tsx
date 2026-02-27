@@ -65,6 +65,7 @@ export default function GamePage() {
   const [revengerSourceId, setRevengerSourceId] = useState<string | null>(null)
   const [isAmnesicMode, setIsAmnesicMode] = useState(false)
   const [amnesicTargetPlayer, setAmnesicTargetPlayer] = useState<Player | null>(null)
+  const [showLeaderboard, setShowLeaderboard] = useState(false)
 
   useEffect(() => {
     const loadGame = async () => {
@@ -602,6 +603,14 @@ export default function GamePage() {
                 variant="outline"
                 size="icon"
                 className="w-12 h-12 rounded-full border border-border text-muted hover:text-foreground shadow-sm transition-transform active:scale-95 bg-background"
+                onClick={() => setShowLeaderboard(true)}
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" /></svg>
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="w-12 h-12 rounded-full border border-border text-muted hover:text-foreground shadow-sm transition-transform active:scale-95 bg-background"
                 onClick={() => setShowRefreshConfirm(true)}
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
@@ -834,6 +843,60 @@ export default function GamePage() {
                 {isRefreshing ? 'Đang Đổi...' : 'Xác Nhận Đổi'}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Leaderboard Modal */}
+      <Dialog open={showLeaderboard} onOpenChange={setShowLeaderboard}>
+        <DialogContent className="p-0 border-border rounded-sm max-w-[360px] overflow-hidden">
+          <DialogHeader>
+            <div className="px-6 pt-6 pb-4 border-b border-border bg-background w-full">
+              <DialogTitle className="font-serif text-xl flex items-center gap-2">
+                🏆 Bảng Xếp Hạng
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted mt-1">
+                Điểm tích lũy qua các ván trong phòng
+              </DialogDescription>
+            </div>
+          </DialogHeader>
+          <div className="p-4 space-y-1 bg-background max-h-[400px] overflow-y-auto">
+            {[...players].sort((a, b) => (b.points || 0) - (a.points || 0)).map((player, index) => {
+              const rank = index + 1
+              const medalEmoji = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : null
+              return (
+                <div key={player.id} className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-sm transition-colors",
+                  rank <= 3 ? "bg-muted/10 border border-border" : "hover:bg-muted/5"
+                )}>
+                  <div className="w-7 text-center shrink-0">
+                    {medalEmoji ? (
+                      <span className="text-base">{medalEmoji}</span>
+                    ) : (
+                      <span className="text-xs font-mono font-bold text-muted">{rank}</span>
+                    )}
+                  </div>
+                  <div className={cn(
+                    "w-8 h-8 rounded-full flex items-center justify-center text-sm font-serif font-semibold shrink-0 border",
+                    getPlayerColorClass(player.id)
+                  )}>
+                    {player.name.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="flex-1 text-sm font-medium text-foreground truncate">
+                    {player.name}
+                  </span>
+                  <span className="text-sm font-bold font-mono text-foreground">
+                    {player.points || 0}
+                    <span className="text-[10px] text-muted font-normal ml-0.5">đ</span>
+                  </span>
+                </div>
+              )
+            })}
+            {players.every(p => (p.points || 0) === 0) && (
+              <p className="text-sm text-muted text-center py-6 italic">
+                Chưa có ai ghi điểm. Hãy chơi xong ván đầu tiên!
+              </p>
+            )}
           </div>
         </DialogContent>
       </Dialog>
