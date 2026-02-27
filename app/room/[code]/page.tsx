@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { startGame, restartGame } from '@/lib/game'
-import { getDefaultRoleSettings, getRoleLimits, SPECIAL_ROLES } from '@/lib/role-utils'
+import { SPECIAL_ROLES } from '@/lib/role-utils'
 import type { Room, Player } from '@/types/database'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -16,6 +16,27 @@ import { Select, ListBox, ListBoxItem } from '@heroui/react'
 import { removeRecentRoom } from '@/lib/storage'
 
 type GameMode = 'random' | 'pack'
+
+const DEFAULT_GAME_SETUP: Record<number, { u: number; w: number }> = {
+  3: { u: 1, w: 0 },
+  4: { u: 1, w: 0 },
+  5: { u: 1, w: 1 },
+  6: { u: 1, w: 1 },
+  7: { u: 2, w: 1 },
+  8: { u: 2, w: 1 },
+  9: { u: 3, w: 1 },
+  10: { u: 3, w: 1 },
+  11: { u: 3, w: 2 },
+  12: { u: 3, w: 2 },
+  13: { u: 4, w: 2 },
+  14: { u: 4, w: 2 },
+  15: { u: 5, w: 2 },
+  16: { u: 5, w: 2 },
+  17: { u: 5, w: 3 },
+  18: { u: 5, w: 3 },
+  19: { u: 6, w: 3 },
+  20: { u: 6, w: 3 },
+};
 
 export default function RoomPage() {
   const params = useParams()
@@ -29,8 +50,9 @@ export default function RoomPage() {
   const [availableCategories, setAvailableCategories] = useState<string[]>([])
   const [playerNames, setPlayerNames] = useState<string[]>(['Người chơi 1', 'Người chơi 2', 'Người chơi 3'])
   const playerCount = playerNames.length
-  const [undercoverCount, setUndercoverCount] = useState(1)
-  const [mrWhiteCount, setMrWhiteCount] = useState(1)
+  const validInitialTotal = Math.max(3, Math.min(20, playerCount));
+  const [undercoverCount, setUndercoverCount] = useState(DEFAULT_GAME_SETUP[validInitialTotal]?.u ?? 1)
+  const [mrWhiteCount, setMrWhiteCount] = useState(DEFAULT_GAME_SETUP[validInitialTotal]?.w ?? 0)
   const [specialRoles, setSpecialRoles] = useState<string[]>([])
   const [isDeleting, setIsDeleting] = useState(false)
   const [isStarting, setIsStarting] = useState(false)
@@ -43,10 +65,25 @@ export default function RoomPage() {
 
   // Auto-adjust roles when player count changes
   useEffect(() => {
-    const defaults = getDefaultRoleSettings(playerCount)
-    setUndercoverCount(defaults.undercoverCount)
-    setMrWhiteCount(defaults.mrWhiteCount)
+    const validTotal = Math.max(3, Math.min(20, playerCount))
+    const defaults = DEFAULT_GAME_SETUP[validTotal] || { u: 1, w: 0 }
+    setUndercoverCount(defaults.u)
+    setMrWhiteCount(defaults.w)
   }, [playerCount])
+
+  // Lấy các state logic nâng cao (civilians auto tính)
+  const civilianCount = playerCount - undercoverCount - mrWhiteCount
+  const maxNonCivilians = Math.floor(playerCount / 2)
+  const currentNonCivilians = undercoverCount + mrWhiteCount
+
+  // Logic kiểm tra trạng thái các nút
+  const canAddUndercover = currentNonCivilians < maxNonCivilians
+  // Có thể giảm thoải mái về 0 để dọn chỗ cho role khác
+  const canRemoveUndercover = undercoverCount > 0
+
+  const canAddMrWhite = currentNonCivilians < maxNonCivilians
+  // Có thể giảm thoải mái về 0 để dọn chỗ cho role khác
+  const canRemoveMrWhite = mrWhiteCount > 0
 
   useEffect(() => {
     // Load room data
@@ -283,10 +320,6 @@ export default function RoomPage() {
 
   const totalEnemies = undercoverCount + mrWhiteCount
   const canStart = playerCount >= 3 && (room.status === 'waiting' || isEditingPlayers) && totalEnemies > 0
-  const civilianCount = playerCount - undercoverCount - mrWhiteCount
-
-  // Calculate dynamic limits
-  const { maxUndercover, maxMrWhite } = getRoleLimits(playerCount, undercoverCount, mrWhiteCount)
 
   return (
     <main className="min-h-screen flex flex-col bg-background text-foreground">
@@ -307,15 +340,8 @@ export default function RoomPage() {
           <h1 className="text-lg font-serif font-semibold tracking-tight">Phòng: {code}</h1>
         </div>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          className="text-muted"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-          </svg>
-        </Button>
+        {/* Empty div to keep title centered against the back button */}
+        <div className="w-10"></div>
       </div>
 
       {/* Main Content */}
@@ -353,11 +379,6 @@ export default function RoomPage() {
                       onClick={() => {
                         const newNames = playerNames.filter((_, i) => i !== index)
                         setPlayerNames(newNames)
-
-                        // Also adjust roles if needed
-                        const { maxUndercover, maxMrWhite } = getRoleLimits(newNames.length, undercoverCount, mrWhiteCount)
-                        if (undercoverCount > maxUndercover) setUndercoverCount(Math.max(0, maxUndercover))
-                        if (mrWhiteCount > maxMrWhite) setMrWhiteCount(Math.max(0, maxMrWhite))
                       }}
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -400,9 +421,9 @@ export default function RoomPage() {
                   <span className="text-sm font-medium">Kẻ nằm vùng</span>
                   <div className="flex items-center gap-1">
                     <button
-                      className="w-8 h-8 flex items-center justify-center border border-border rounded-sm hover:bg-muted/10 text-muted disabled:opacity-30 transition-colors"
-                      onClick={() => setUndercoverCount(Math.max(0, undercoverCount - 1))}
-                      disabled={undercoverCount <= 0}
+                      className={`w-8 h-8 flex items-center justify-center border border-border rounded-sm text-muted transition-colors ${!canRemoveUndercover ? 'opacity-30 cursor-not-allowed' : 'hover:bg-muted/10 cursor-pointer'}`}
+                      onClick={() => canRemoveUndercover && setUndercoverCount(prev => prev - 1)}
+                      disabled={!canRemoveUndercover}
                     >
                       −
                     </button>
@@ -410,9 +431,9 @@ export default function RoomPage() {
                       {undercoverCount}
                     </div>
                     <button
-                      className="w-8 h-8 flex items-center justify-center border border-border rounded-sm hover:bg-muted/10 text-muted disabled:opacity-30 transition-colors"
-                      onClick={() => setUndercoverCount(Math.min(maxUndercover, undercoverCount + 1))}
-                      disabled={undercoverCount >= maxUndercover}
+                      className={`w-8 h-8 flex items-center justify-center border border-border rounded-sm text-muted transition-colors ${!canAddUndercover ? 'opacity-30 cursor-not-allowed' : 'hover:bg-muted/10 cursor-pointer'}`}
+                      onClick={() => canAddUndercover && setUndercoverCount(prev => prev + 1)}
+                      disabled={!canAddUndercover}
                     >
                       +
                     </button>
@@ -424,9 +445,9 @@ export default function RoomPage() {
                   <span className="text-sm font-medium">Mr. White</span>
                   <div className="flex items-center gap-1">
                     <button
-                      className="w-8 h-8 flex items-center justify-center border border-border rounded-sm hover:bg-muted/10 text-muted disabled:opacity-30 transition-colors"
-                      onClick={() => setMrWhiteCount(Math.max(0, mrWhiteCount - 1))}
-                      disabled={mrWhiteCount <= 0}
+                      className={`w-8 h-8 flex items-center justify-center border border-border rounded-sm text-muted transition-colors ${!canRemoveMrWhite ? 'opacity-30 cursor-not-allowed' : 'hover:bg-muted/10 cursor-pointer'}`}
+                      onClick={() => canRemoveMrWhite && setMrWhiteCount(prev => prev - 1)}
+                      disabled={!canRemoveMrWhite}
                     >
                       −
                     </button>
@@ -434,9 +455,9 @@ export default function RoomPage() {
                       {mrWhiteCount}
                     </div>
                     <button
-                      className="w-8 h-8 flex items-center justify-center border border-border rounded-sm hover:bg-muted/10 text-muted disabled:opacity-30 transition-colors"
-                      onClick={() => setMrWhiteCount(Math.min(maxMrWhite, mrWhiteCount + 1))}
-                      disabled={mrWhiteCount >= maxMrWhite}
+                      className={`w-8 h-8 flex items-center justify-center border border-border rounded-sm text-muted transition-colors ${!canAddMrWhite ? 'opacity-30 cursor-not-allowed' : 'hover:bg-muted/10 cursor-pointer'}`}
+                      onClick={() => canAddMrWhite && setMrWhiteCount(prev => prev + 1)}
+                      disabled={!canAddMrWhite}
                     >
                       +
                     </button>
@@ -487,8 +508,8 @@ export default function RoomPage() {
                       <div
                         key={role.id}
                         className={`flex flex-col p-4 rounded-md border transition-all cursor-pointer select-none relative bg-background ${isDisabled ? 'opacity-50 grayscale border-transparent' :
-                            isEnabled ? 'border-foreground shadow-sm ring-1 ring-foreground/20' :
-                              'border-border hover:border-foreground/40 hover:shadow-sm'
+                          isEnabled ? 'border-foreground shadow-sm ring-1 ring-foreground/20' :
+                            'border-border hover:border-foreground/40 hover:shadow-sm'
                           }`}
                         onClick={() => {
                           if (isDisabled) return
