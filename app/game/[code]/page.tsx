@@ -744,13 +744,31 @@ export default function GamePage() {
             <div className="px-6 py-8 text-center flex flex-col justify-center bg-background">
               <div className="space-y-6 animate-fade-in">
                 <div className="flex flex-col items-center">
-                  <div className={cn(
-                    "w-20 h-20 rounded-full flex items-center justify-center text-3xl font-serif font-bold mb-4 shadow-sm border",
-                    getPlayerColorClass(viewingPlayer.id)
-                  )}>
-                    {viewingPlayer.name.charAt(0).toUpperCase()}
+                  <div className="relative">
+                    <div className={cn(
+                      "w-20 h-20 rounded-full flex items-center justify-center text-3xl font-serif font-bold shadow-sm border",
+                      getPlayerColorClass(viewingPlayer.id)
+                    )}>
+                      {viewingPlayer.name.charAt(0).toUpperCase()}
+                    </div>
+                    {/* Role Badge */}
+                    <div className="absolute -bottom-1 -right-1 bg-background border border-border rounded-full w-9 h-9 flex items-center justify-center z-20 shadow-md">
+                      <span className="text-lg">
+                        {viewingPlayer.role === 'civilian' ? '👤' :
+                          viewingPlayer.role === 'undercover' ? '🕵️' : '👻'}
+                      </span>
+                    </div>
                   </div>
-                  <h2 className="text-lg font-bold text-foreground tracking-wide mb-1">{viewingPlayer.name}</h2>
+                  <h2 className="text-lg font-bold text-foreground tracking-wide mt-4 mb-0.5">{viewingPlayer.name}</h2>
+                  <span className={cn(
+                    "text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-sm",
+                    viewingPlayer.role === 'civilian' ? "text-blue-600 dark:text-blue-400 bg-blue-500/10" :
+                      viewingPlayer.role === 'undercover' ? "text-red-500 bg-red-500/10" :
+                        "text-zinc-500 bg-zinc-500/10"
+                  )}>
+                    {viewingPlayer.role === 'civilian' ? 'Dân thường' :
+                      viewingPlayer.role === 'undercover' ? 'Undercover' : 'Mr. White'}
+                  </span>
                 </div>
 
                 <div className="w-full text-center flex flex-col items-center mt-2">
