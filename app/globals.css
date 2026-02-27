@@ -114,3 +114,16 @@ body {
 .animate-pulse-slow {
   animation: pulse 2s ease-in-out infinite;
 }
+
+@keyframes textShimmer {
+  0% {
+    background-position: 200% center;
+  }
+  100% {
+    background-position: -200% center;
+  }
+}
+
+.animate-text-shimmer {
+  animation: textShimmer 4s linear infinite;
+}
