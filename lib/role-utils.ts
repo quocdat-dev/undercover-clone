@@ -93,66 +93,66 @@ export type SpecialRole = {
 
 export const SPECIAL_ROLES: SpecialRole[] = [
   {
-    id: 'lovers',
-    name: 'The Lovers',
-    description: 'Hai người chơi yêu nhau. Nếu một người bị loại, người kia cũng sẽ bị loại (cần ít nhất 5 người chơi).',
-    minPlayers: 5,
-    color: 'bg-pink-500' // Using color classes for placeholders
-  },
-  {
-    id: 'boomerang',
-    name: 'The Boomerang',
-    description: 'Lần đầu tiên bị bầu chọn nhiều nhất, thay vì bị loại, những người bỏ phiếu cho họ sẽ nhận lại phiếu.',
-    minPlayers: 3,
-    color: 'bg-orange-500'
-  },
-  {
-    id: 'revenger',
-    name: 'The Revenger',
-    description: 'Khi bị loại, có thể kéo theo một người khác bị loại cùng (cần ít nhất 5 người chơi).',
-    minPlayers: 5,
-    color: 'bg-purple-500'
-  },
-  {
     id: 'joy_fool',
     name: 'The Joy Fool',
-    description: 'Thắng nếu bị loại ĐẦU TIÊN!',
+    description: 'The Joy Fool thắng 4 điểm thưởng nếu bị vote loại đầu tiên!',
     minPlayers: 3,
     color: 'bg-yellow-500'
   },
   {
-    id: 'ghost',
-    name: 'The Ghost',
-    description: 'Vẫn có thể thảo luận và bỏ phiếu dù đã bị loại!',
+    id: 'boomerang',
+    name: 'The Boomerang',
+    description: 'Lần đầu tiên nhận đa số phiếu, thay vì bị loại, phiếu bầu sẽ bị dội lại!',
     minPlayers: 3,
-    color: 'bg-slate-300'
-  },
-  {
-    id: 'mr_meme',
-    name: 'Mr. Meme',
-    description: 'Chỉ được phép diễn tả từ khóa bằng hành động, không được nói chuyện!',
-    minPlayers: 3,
-    color: 'bg-zinc-800'
+    color: 'bg-orange-500'
   },
   {
     id: 'justice',
     name: 'Goddess of Justice',
-    description: 'Trong trường hợp hòa phiếu, nữ thần quyết định ai bị loại (kể cả khi đã bị loại).',
+    description: 'Trong trường hợp hòa phiếu, cô ấy sẽ quyết định ai bị loại (kể cả khi đã bị loại).',
     minPlayers: 3,
     color: 'bg-emerald-600'
   },
   {
-    id: 'duelists',
-    name: 'The Duelists',
-    description: 'Hai người chơi quyết đấu bí mật. Kẻ bị loại trước thua cuộc (cần ít nhất 5 người chơi).',
+    id: 'ghost',
+    name: 'The Ghost',
+    description: 'The Ghost vẫn có thể tham gia bỏ phiếu ngay cả khi đã bị loại!',
+    minPlayers: 3,
+    color: 'bg-slate-300'
+  },
+  {
+    id: 'lovers',
+    name: 'The Lovers',
+    description: 'Hai người chơi đang yêu. Nếu một người bị loại, người kia cũng bị loại theo (cần 5 người chơi).',
     minPlayers: 5,
-    color: 'bg-amber-700'
+    color: 'bg-pink-500'
+  },
+  {
+    id: 'mr_meme',
+    name: 'Mr. Meme',
+    description: 'Mỗi round, 1 người chơi phải mô tả từ khóa bằng hành động thay vì nói (chỉ khi chơi trực tiếp).',
+    minPlayers: 3,
+    color: 'bg-zinc-800'
   },
   {
     id: 'falafel',
     name: 'The Falafel Vendor',
-    description: 'Nhận ngẫu nhiên quyền năng của một vai trò đặc biệt khác (cần 4 người chơi).',
+    description: 'Nhận ngẫu nhiên một khả năng đặc biệt mỗi ván! Thử vận may xem! (cần 4 người chơi).',
     minPlayers: 4,
     color: 'bg-yellow-700'
+  },
+  {
+    id: 'revenger',
+    name: 'The Revenger',
+    description: 'Khi bị loại, có thể kéo theo loại một người khác cùng (cần 5 người chơi).',
+    minPlayers: 5,
+    color: 'bg-purple-500'
+  },
+  {
+    id: 'duelists',
+    name: 'The Duelists',
+    description: 'Hai người chơi đấu tay đôi bí mật. Người bị loại trước mất 2 điểm, người kia được 2 điểm (cần 5 người chơi).',
+    minPlayers: 5,
+    color: 'bg-amber-700'
   }
 ]

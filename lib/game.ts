@@ -1,5 +1,7 @@
 import { supabase } from './supabase'
 import { getDefaultRoleSettings, normalizeRoleSettings } from './role-utils'
+import { resolveFalafelVendor, selectMrMemeTarget } from './special-role-effects'
+import { calculateGamePoints, applyPointsToPlayers } from './points'
 import type {
   Room,
   Player,
@@ -103,6 +105,9 @@ export function assignRoles(players: Player[], settings?: RoomSettings): Player[
     specialRoleAssignments.set(shuffledIndicesForSpecial[i], specialRolesList[i])
   }
 
+  // Resolve Falafel Vendor — assign a random ability from the pool
+  const existingRoles = settings?.specialRoles || []
+
   const assignedPlayers = shuffled.map((player, index) => {
     let role: Player['role'] = 'civilian'
 
@@ -112,13 +117,26 @@ export function assignRoles(players: Player[], settings?: RoomSettings): Player[
       role = 'mr_white'
     }
     
-    const special_role = specialRoleAssignments.get(index)
+    const special_role = specialRoleAssignments.get(index) || null
+
+    // Resolve Falafel Vendor to a random ability
+    let state: Record<string, any> = {}
+    if (special_role === 'falafel') {
+      const resolvedRole = resolveFalafelVendor(existingRoles)
+      state = { resolved_falafel_role: resolvedRole }
+    }
 
     return {
       ...player,
       role,
-      special_role: special_role || null,
-      state: {}, // Reset state
+      special_role,
+      state,
+      is_alive: true,
+      is_ghost: false,
+      rounds_survived: 0,
+      elimination_round: null,
+      // Preserve accumulated points from previous games
+      points: player.points || 0,
     }
   })
 
@@ -184,6 +202,12 @@ export async function startGame(
     // Assign roles using room settings
     const playersWithRoles = assignRoles(players, room.settings)
 
+    // Select Mr. Meme target if active
+    const hasMrMeme = playersWithRoles.some(p => p.special_role === 'mr_meme')
+    const mrMemeTargetId = hasMrMeme
+      ? selectMrMemeTarget(playersWithRoles.filter(p => p.is_alive))
+      : null
+
     // Update room
     const { error: updateError } = await supabase
       .from('rooms')
@@ -192,6 +216,9 @@ export async function startGame(
         current_word_pair_id: wordPair.id,
         used_word_ids: [...(room.used_word_ids || []), wordPair.id],
         players: playersWithRoles,
+        current_round: 1,
+        first_elimination_done: false,
+        mr_meme_target_id: mrMemeTargetId,
       })
       .eq('code', roomCode)
 
@@ -278,17 +305,25 @@ export async function endGame(
     }
 
     const players = (room.players || []) as Player[]
-    const winnerPlayers = players.filter((p) => winners.includes(p.id))
     const endTime = new Date()
     const duration = startTime
       ? Math.floor((endTime.getTime() - startTime.getTime()) / 1000)
       : null
 
+    // Calculate and apply points
+    const gameState = {
+      currentRound: room.current_round || 1,
+      firstEliminationDone: room.first_elimination_done || false,
+    }
+    const pointBreakdowns = calculateGamePoints(players, winners, gameState)
+    const playersWithPoints = applyPointsToPlayers(players, pointBreakdowns)
+    const winnerPlayers = playersWithPoints.filter((p) => winners.includes(p.id))
+
     // Save to game history
     const { error: historyError } = await supabase.from('game_history').insert({
       room_code: roomCode,
       word_pair_id: room.current_word_pair_id,
-      players: players,
+      players: playersWithPoints,
       winners: winnerPlayers,
       game_result: reason,
       started_at: startTime?.toISOString() || new Date().toISOString(),
@@ -298,14 +333,14 @@ export async function endGame(
 
     if (historyError) {
       console.error('Error saving game history:', historyError)
-      // Continue even if history save fails
     }
 
-    // Update room status
+    // Update room status with accumulated points
     const { error: updateError } = await supabase
       .from('rooms')
       .update({
         status: 'finished',
+        players: playersWithPoints,
       })
       .eq('code', roomCode)
 
@@ -386,11 +421,17 @@ export async function restartGame(roomCode: string): Promise<{
 
     const players = (room.players || []) as Player[]
     
-    // Reset all players (alive, no roles)
+    // Reset per-game fields but PRESERVE accumulated points
     const resetPlayers = players.map((p) => ({
       ...p,
       role: null,
       is_alive: true,
+      is_ghost: false,
+      rounds_survived: 0,
+      elimination_round: null,
+      state: {},
+      // Keep accumulated points!
+      points: p.points || 0,
     }))
 
     // Get new word pair
@@ -402,6 +443,12 @@ export async function restartGame(roomCode: string): Promise<{
     // Assign new roles using room settings
     const playersWithRoles = assignRoles(resetPlayers, room.settings)
 
+    // Select Mr. Meme target if active
+    const hasMrMeme = playersWithRoles.some(p => p.special_role === 'mr_meme')
+    const mrMemeTargetId = hasMrMeme
+      ? selectMrMemeTarget(playersWithRoles.filter(p => p.is_alive))
+      : null
+
     // Update room
     const { error: updateError } = await supabase
       .from('rooms')
@@ -410,6 +457,9 @@ export async function restartGame(roomCode: string): Promise<{
         current_word_pair_id: wordPair.id,
         used_word_ids: [...(room.used_word_ids || []), wordPair.id],
         players: playersWithRoles,
+        current_round: 1,
+        first_elimination_done: false,
+        mr_meme_target_id: mrMemeTargetId,
       })
       .eq('code', roomCode)
 

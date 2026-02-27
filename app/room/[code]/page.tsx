@@ -238,6 +238,9 @@ export default function RoomPage() {
       role: null,
       is_alive: true,
       order: index + 1,
+      points: 0,
+      rounds_survived: 0,
+      elimination_round: null,
     }))
 
     // Update room with players AND settings
@@ -640,21 +643,25 @@ export default function RoomPage() {
         </div>
       )}
 
-      {/* Playing State */}
-      {room.status === 'playing' && !isEditingPlayers && (
+      {/* Playing / Finished State */}
+      {(room.status === 'playing' || room.status === 'finished') && !isEditingPlayers && (
         <div className="flex-1 flex flex-col items-center justify-center px-4">
           <Card className="w-full max-w-sm">
             <CardContent className="p-8 text-center space-y-6">
               <div className="space-y-2">
-                <h3 className="font-serif text-xl font-semibold">Ván đang diễn ra</h3>
-                <p className="text-sm text-muted">Vui lòng tham gia để tiếp tục.</p>
+                <h3 className="font-serif text-xl font-semibold">
+                  {room.status === 'finished' ? 'Ván đã kết thúc' : 'Ván đang diễn ra'}
+                </h3>
+                <p className="text-sm text-muted">
+                  {room.status === 'finished' ? 'Bạn có thể xem kết quả hoặc chơi lại.' : 'Vui lòng tham gia để tiếp tục.'}
+                </p>
               </div>
               <Button
-                onClick={() => router.push(`/game/${code}`)}
+                onClick={() => router.push(room.status === 'finished' ? `/result/${code}` : `/game/${code}`)}
                 className="w-full font-medium"
                 variant="primary"
               >
-                Vào Game Nào
+                {room.status === 'finished' ? 'Xem Kết Quả' : 'Vào Game Nào'}
               </Button>
 
               <div className="pt-4 space-y-3 border-t border-border">

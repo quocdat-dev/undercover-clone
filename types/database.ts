@@ -14,6 +14,9 @@ export interface Room {
   used_word_ids: number[]
   players: Player[]
   settings: RoomSettings
+  current_round: number
+  first_elimination_done: boolean
+  mr_meme_target_id: string | null
   timer_end_at?: string | null
   created_at?: string
   updated_at?: string
@@ -26,7 +29,11 @@ export interface Player {
   special_role?: string | null
   state?: Record<string, any>
   is_alive: boolean
+  is_ghost?: boolean
   order: number
+  points: number
+  rounds_survived: number
+  elimination_round: number | null
 }
 
 export interface WordPair {

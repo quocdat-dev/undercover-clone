@@ -5,6 +5,12 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { checkGameEnd, endGame, restartGame } from '@/lib/game'
 import { SPECIAL_ROLES } from '@/lib/role-utils'
+import {
+  handleElimination as processElimination,
+  applyRevengerChoice,
+  incrementLoversRoundsSurvived,
+  selectMrMemeTarget,
+} from '@/lib/special-role-effects'
 import type { Room, Player, WordPair } from '@/types/database'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -55,6 +61,8 @@ export default function GamePage() {
 
   const [showRefreshConfirm, setShowRefreshConfirm] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [revengerPickMode, setRevengerPickMode] = useState(false)
+  const [revengerSourceId, setRevengerSourceId] = useState<string | null>(null)
   const [isAmnesicMode, setIsAmnesicMode] = useState(false)
   const [amnesicTargetPlayer, setAmnesicTargetPlayer] = useState<Player | null>(null)
 
@@ -114,9 +122,22 @@ export default function GamePage() {
         const shuffledIndices = Array.from({ length: alivePlayers.length }, (_, i) => i + 1).sort(() => Math.random() - 0.5)
         alivePlayers.forEach((p, index) => orderMap[p.id] = shuffledIndices[index])
         setSpeakingOrder(orderMap)
+
+        // Mr. Meme toast notification
+        const currentMrMemeTargetId = room?.mr_meme_target_id
+        if (currentMrMemeTargetId) {
+          const targetPlayer = players.find(p => p.id === currentMrMemeTargetId)
+          if (targetPlayer) {
+            addToast({
+              title: '🤫 Mr. Meme!',
+              description: `${targetPlayer.name} phải mô tả bằng hành động round này!`,
+              variant: 'warning',
+            })
+          }
+        }
       }
     }
-  }, [viewedPlayerIds, gamePhase, room, viewingPlayer])
+  }, [viewedPlayerIds, gamePhase, room, viewingPlayer, addToast])
 
   // Callbacks
   const handleRefreshGame = async () => {
@@ -168,38 +189,71 @@ export default function GamePage() {
     if (!room) return
     setIsProcessingElimination(true)
     const players = (room.players || []) as Player[]
-    let updatedPlayers = [...players]
-    const playerToEliminate = players.find(p => p.id === playerId)
-    if (!playerToEliminate) {
-      setIsProcessingElimination(false)
-      return
+    const currentRound = room.current_round || 1
+    const firstEliminationDone = room.first_elimination_done || false
+
+    // Use centralized effects engine
+    const result = processElimination(playerId, players, currentRound, firstEliminationDone)
+
+    // Show toasts
+    for (const t of result.toasts) {
+      addToast(t)
     }
 
-    if (playerToEliminate.special_role === 'boomerang' && !playerToEliminate.state?.boomerang_used) {
-      addToast({ title: 'Boomerang Kích Hoạt!', description: `${playerToEliminate.name} dội lại phiếu bầu!`, variant: 'warning' })
-      updatedPlayers = updatedPlayers.map(p => p.id === playerId ? { ...p, state: { ...p.state, boomerang_used: true } } : p)
-      await supabase.from('rooms').update({ players: updatedPlayers }).eq('code', code)
+    if (!result.shouldEliminate) {
+      // Boomerang blocked — just update state
+      await supabase.from('rooms').update({ players: result.updatedPlayers }).eq('code', code)
       setConfirmVotePlayer(null)
       setIsProcessingElimination(false)
       return
     }
 
-    updatedPlayers = updatedPlayers.map((p) => p.id === playerId ? { ...p, is_alive: false } : p)
+    // Increment Lovers rounds_survived for alive lovers
+    let updatedPlayers = incrementLoversRoundsSurvived(result.updatedPlayers)
 
-    if (playerToEliminate.special_role === 'lovers') {
-      const otherLover = players.find(p => p.id !== playerId && p.special_role === 'lovers' && p.is_alive)
-      if (otherLover) {
-        addToast({ title: 'Lovers Kích Hoạt!', description: `${otherLover.name} cũng bị loại!`, variant: 'error' })
-        updatedPlayers = updatedPlayers.map((p) => p.id === otherLover.id ? { ...p, is_alive: false } : p)
-      }
-    }
+    // Select new Mr. Meme target for next round
+    const alivePlayers = updatedPlayers.filter(p => p.is_alive)
+    const hasMrMeme = updatedPlayers.some(p => p.special_role === 'mr_meme')
+    const newMrMemeTarget = hasMrMeme ? selectMrMemeTarget(alivePlayers) : null
 
-    await supabase.from('rooms').update({ players: updatedPlayers }).eq('code', code)
-    const gameResult = checkGameEnd(updatedPlayers)
+    // Update room with new round
+    await supabase.from('rooms').update({
+      players: updatedPlayers,
+      current_round: currentRound + 1,
+      first_elimination_done: true,
+      mr_meme_target_id: newMrMemeTarget,
+    }).eq('code', code)
+
+    const playerToEliminate = players.find(p => p.id === playerId)
     setConfirmVotePlayer(null)
-    setEliminationRevealPlayer(playerToEliminate)
+    setEliminationRevealPlayer(playerToEliminate || null)
     setIsProcessingElimination(false)
 
+    // Check if Revenger needs to pick
+    if (result.requiresRevengePick) {
+      setRevengerSourceId(playerId)
+      setRevengerPickMode(true)
+    }
+
+    // Check game end
+    const gameResult = checkGameEnd(updatedPlayers)
+    if (gameResult.ended) {
+      await endGame(code, gameResult.winners, gameResult.reason, gameStartTimeRef.current || undefined)
+    }
+  }
+
+  const handleRevengerPick = async (targetId: string) => {
+    if (!room) return
+    const players = (room.players || []) as Player[]
+    const currentRound = room.current_round || 1
+    const { updatedPlayers, toast } = applyRevengerChoice(targetId, players, currentRound)
+    addToast(toast)
+
+    await supabase.from('rooms').update({ players: updatedPlayers }).eq('code', code)
+    setRevengerPickMode(false)
+    setRevengerSourceId(null)
+
+    const gameResult = checkGameEnd(updatedPlayers)
     if (gameResult.ended) {
       await endGame(code, gameResult.winners, gameResult.reason, gameStartTimeRef.current || undefined)
     }
@@ -213,14 +267,13 @@ export default function GamePage() {
     if (gameResult.ended) {
       router.push(`/result/${code}`)
     } else {
-      // Loop back to discussion or next turn logic
       setGamePhase('discussion')
     }
   }
 
   // Derived state (Must be before early returns)
   const players = useMemo(() => (room?.players || []) as Player[], [room?.players])
-  const alivePlayers = useMemo(() => players.filter((p: Player) => p.is_alive), [players])
+  const alivePlayers = useMemo(() => players.filter((p: Player) => p.is_alive || p.is_ghost), [players])
   const currentPlayer = useMemo(() => alivePlayers.find((p: Player) => !viewedPlayerIds.has(p.id)), [alivePlayers, viewedPlayerIds])
 
   const playersToDisplay = useMemo(() => {
@@ -275,8 +328,10 @@ export default function GamePage() {
   const undercoverCount = players.filter((p: Player) => p.role === 'undercover' && p.is_alive).length
   const mrWhiteCount = players.filter((p: Player) => p.role === 'mr_white' && p.is_alive).length
   const activeSpecialRoles = Array.from(new Set(
-    players.filter((p: Player) => p.is_alive && p.special_role).map((p: Player) => SPECIAL_ROLES.find(r => r.id === p.special_role)?.name).filter((name): name is string => !!name)
+    players.filter((p: Player) => (p.is_alive || p.is_ghost) && p.special_role).map((p: Player) => SPECIAL_ROLES.find(r => r.id === p.special_role)?.name).filter((name): name is string => !!name)
   ))
+  const mrMemeTargetId = room?.mr_meme_target_id || null
+  const justicePlayer = players.find(p => p.special_role === 'justice')
 
   const getPlayerColorClass = (id: string) => {
     const hash = id.split('').reduce((acc, char) => char.charCodeAt(0) + acc, 0)
@@ -367,6 +422,29 @@ export default function GamePage() {
           </Card>
         </div>
 
+        {/* 🤫 Mr. Meme Announcement Banner */}
+        {mrMemeTargetId && (gamePhase === 'discussion' || gamePhase === 'voting') && (() => {
+          const targetPlayer = players.find(p => p.id === mrMemeTargetId)
+          if (!targetPlayer || !targetPlayer.is_alive) return null
+          return (
+            <div className="w-full mb-6 animate-fade-in">
+              <div className="flex items-center gap-3 p-3 border border-dashed border-zinc-400 dark:border-zinc-600 rounded-sm bg-zinc-800/5 dark:bg-zinc-800/30">
+                <div className="w-9 h-9 rounded-full bg-zinc-800 dark:bg-zinc-700 flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-sm">
+                  🤫
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-foreground">
+                    Mr. Meme — <span className="text-zinc-600 dark:text-zinc-300">{targetPlayer.name}</span>
+                  </p>
+                  <p className="text-[10px] text-muted leading-tight mt-0.5">
+                    Phải mô tả từ khóa bằng hành động thay vì nói!
+                  </p>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
+
         {/* 🎮 GRID AREA */}
         <div className="grid grid-cols-3 gap-x-4 gap-y-6 w-full mb-12 place-items-start justify-items-center px-1">
           {gridItems.map((item: Player | null, index: number) => {
@@ -397,14 +475,35 @@ export default function GamePage() {
 
             // 👤 STANDARD AVATAR (Viewed or Dead or Discussion/Voting Phase)
             const player = item;
-            const isAlive = player.is_alive
+            const isAlive = player.is_alive || !!player.is_ghost
+            const isGhost = !!player.is_ghost && !player.is_alive
             const isUndercover = player.role === 'undercover'
+            const isMrMemeTarget = mrMemeTargetId === player.id && player.is_alive
+            const isJustice = player.special_role === 'justice'
             const isMrWhite = player.role === 'mr_white'
 
             return (
               <div key={`player-${player.id}`} className="flex flex-col items-center justify-start relative gap-2 w-full max-w-[85px] animate-fade-in">
+                {/* Mr. Meme Badge */}
+                {isMrMemeTarget && gamePhase === 'discussion' && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+                    <div className="bg-zinc-800 text-white text-[9px] font-bold uppercase px-2 py-0.5 rounded-sm shadow-sm">🤫 Gesture</div>
+                  </div>
+                )}
+                {/* Ghost Badge */}
+                {isGhost && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+                    <div className="bg-slate-400 text-white text-[9px] font-bold uppercase px-2 py-0.5 rounded-sm shadow-sm">👻 Ghost</div>
+                  </div>
+                )}
+                {/* Justice Badge */}
+                {isJustice && gamePhase === 'voting' && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+                    <div className="bg-emerald-600 text-white text-[9px] font-bold uppercase px-2 py-0.5 rounded-sm shadow-sm">⚖️ Judge</div>
+                  </div>
+                )}
                 {/* Vote Badge */}
-                {gamePhase === 'voting' && isAlive && (
+                {gamePhase === 'voting' && isAlive && !isGhost && !isJustice && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
                     <div className="bg-foreground text-background text-[10px] font-bold uppercase px-2 py-0.5 rounded-sm shadow-sm animate-bounce">Vote</div>
                   </div>
@@ -418,8 +517,14 @@ export default function GamePage() {
                     </div>
                   )}
                   <button
-                    onClick={() => handlePlayerClick(player)}
-                    disabled={!isAlive || gamePhase === 'viewing_cards'}
+                    onClick={() => {
+                      if (revengerPickMode && player.is_alive && player.id !== revengerSourceId) {
+                        handleRevengerPick(player.id)
+                        return
+                      }
+                      handlePlayerClick(player)
+                    }}
+                    disabled={(!isAlive && !isGhost) || gamePhase === 'viewing_cards'}
                     className={cn(
                       "w-[85px] h-[85px] rounded-full flex items-center justify-center text-4xl font-serif font-semibold transition-all shadow-sm border",
                       isAlive ? getPlayerColorClass(player.id) : "bg-muted/10 border-border text-muted",
@@ -614,16 +719,41 @@ export default function GamePage() {
                   {viewingPlayer.special_role && (() => {
                     const specRole = SPECIAL_ROLES.find(r => r.id === viewingPlayer.special_role)
                     if (!specRole) return null
+                    // For Falafel Vendor, show the resolved ability
+                    const resolvedFalafelRole = viewingPlayer.state?.resolved_falafel_role
+                    const resolvedSpecRole = resolvedFalafelRole ? SPECIAL_ROLES.find(r => r.id === resolvedFalafelRole) : null
+                    const isDuelist = viewingPlayer.special_role === 'duelists'
                     return (
-                      <div className="mt-4 p-3 border border-border rounded-sm flex items-start gap-3 text-left bg-background w-full">
-                        <div className={cn("w-8 h-8 rounded-sm shrink-0 flex items-center justify-center text-white text-sm font-bold shadow-sm", specRole.color)}>
-                          {specRole.name.charAt(0)}
+                      <>
+                        <div className="mt-4 p-3 border border-border rounded-sm flex items-start gap-3 text-left bg-background w-full">
+                          <div className={cn("w-8 h-8 rounded-sm shrink-0 flex items-center justify-center text-white text-sm font-bold shadow-sm", specRole.color)}>
+                            {specRole.name.charAt(0)}
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold text-foreground">{specRole.name}</p>
+                            <p className="text-[10px] text-muted leading-tight mt-0.5">{specRole.description}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-xs font-semibold text-foreground">{specRole.name}</p>
-                          <p className="text-[10px] text-muted leading-tight mt-0.5">{specRole.description}</p>
-                        </div>
-                      </div>
+                        {isDuelist && (
+                          <div className="mt-2 p-3 border border-dashed border-amber-500/50 rounded-sm flex items-center gap-3 text-left bg-amber-500/5 w-full">
+                            <span className="text-lg">⚔️</span>
+                            <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">
+                              Bạn đang trong cuộc đấu tay đôi bí mật! Nếu bị loại trước đối thủ, bạn mất 2 điểm.
+                            </p>
+                          </div>
+                        )}
+                        {resolvedSpecRole && (
+                          <div className="mt-2 p-3 border border-dashed border-yellow-500/50 rounded-sm flex items-start gap-3 text-left bg-yellow-500/5 w-full">
+                            <div className={cn("w-8 h-8 rounded-sm shrink-0 flex items-center justify-center text-white text-sm font-bold shadow-sm", resolvedSpecRole.color)}>
+                              {resolvedSpecRole.name.charAt(0)}
+                            </div>
+                            <div>
+                              <p className="text-xs font-semibold text-yellow-600 dark:text-yellow-400">🎲 Khả năng nhận được: {resolvedSpecRole.name}</p>
+                              <p className="text-[10px] text-muted leading-tight mt-0.5">{resolvedSpecRole.description}</p>
+                            </div>
+                          </div>
+                        )}
+                      </>
                     )
                   })()}
                 </div>
