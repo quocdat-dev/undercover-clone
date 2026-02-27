@@ -18,6 +18,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { useToast } from '@/components/ui/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { playSound } from '@/lib/sound'
 
 type GamePhase = 'viewing_cards' | 'discussion' | 'voting'
 
@@ -123,6 +124,24 @@ export default function GamePage() {
         const orderMap: Record<string, number> = {}
         const shuffledIndices = Array.from({ length: alivePlayers.length }, (_, i) => i + 1).sort(() => Math.random() - 0.5)
         alivePlayers.forEach((p, index) => orderMap[p.id] = shuffledIndices[index])
+
+        // If mrWhiteCanStart is false, ensure Mr. White is not speaking first
+        const mrWhiteCanStartSetting = room?.settings?.mrWhiteCanStart ?? false
+        if (!mrWhiteCanStartSetting) {
+          const mrWhitePlayers = alivePlayers.filter(p => p.role === 'mr_white')
+          for (const mw of mrWhitePlayers) {
+            if (orderMap[mw.id] === 1) {
+              // Find a non-Mr.White player to swap with
+              const swapTarget = alivePlayers.find(p => p.role !== 'mr_white' && orderMap[p.id] !== 1)
+              if (swapTarget) {
+                const tempOrder = orderMap[mw.id]
+                orderMap[mw.id] = orderMap[swapTarget.id]
+                orderMap[swapTarget.id] = tempOrder
+              }
+            }
+          }
+        }
+
         setSpeakingOrder(orderMap)
 
         // Mr. Meme toast notification
@@ -169,6 +188,7 @@ export default function GamePage() {
   }
 
   const handleCloseViewModal = () => {
+    playSound('card_flip')
     setViewedPlayerIds(prev => {
       const next = new Set(prev)
       if (viewingPlayer) next.add(viewingPlayer.id)
@@ -208,6 +228,7 @@ export default function GamePage() {
       const blockedPlayer = players.find(p => p.id === playerId)
       setConfirmVotePlayer(null)
       setBoomerangRevealPlayer(blockedPlayer || null)
+      playSound('boomerang')
       setIsProcessingElimination(false)
       return
     }
@@ -231,6 +252,7 @@ export default function GamePage() {
     const playerToEliminate = players.find(p => p.id === playerId)
     setConfirmVotePlayer(null)
     setEliminationRevealPlayer(playerToEliminate || null)
+    playSound('eliminate')
     setIsProcessingElimination(false)
 
     // Check if Revenger needs to pick
@@ -242,6 +264,7 @@ export default function GamePage() {
     // Check game end
     const gameResult = checkGameEnd(updatedPlayers)
     if (gameResult.ended) {
+      playSound('game_end')
       await endGame(code, gameResult.winners, gameResult.reason, gameStartTimeRef.current || undefined)
     }
   }
@@ -751,24 +774,29 @@ export default function GamePage() {
                     )}>
                       {viewingPlayer.name.charAt(0).toUpperCase()}
                     </div>
-                    {/* Role Badge */}
-                    <div className="absolute -bottom-1 -right-1 bg-background border border-border rounded-full w-9 h-9 flex items-center justify-center z-20 shadow-md">
-                      <span className="text-lg">
-                        {viewingPlayer.role === 'civilian' ? '👤' :
-                          viewingPlayer.role === 'undercover' ? '🕵️' : '👻'}
-                      </span>
-                    </div>
+                    {/* Role Badge - hidden when easyMode is off (except Mr. White) */}
+                    {(room?.settings?.easyMode !== false || viewingPlayer.role === 'mr_white') && (
+                      <div className="absolute -bottom-1 -right-1 bg-background border border-border rounded-full w-9 h-9 flex items-center justify-center z-20 shadow-md">
+                        <span className="text-lg">
+                          {viewingPlayer.role === 'civilian' ? '👤' :
+                            viewingPlayer.role === 'undercover' ? '🕵️' : '👻'}
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <h2 className="text-lg font-bold text-foreground tracking-wide mt-4 mb-0.5">{viewingPlayer.name}</h2>
-                  <span className={cn(
-                    "text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-sm",
-                    viewingPlayer.role === 'civilian' ? "text-blue-600 dark:text-blue-400 bg-blue-500/10" :
-                      viewingPlayer.role === 'undercover' ? "text-red-500 bg-red-500/10" :
-                        "text-zinc-500 bg-zinc-500/10"
-                  )}>
-                    {viewingPlayer.role === 'civilian' ? 'Dân thường' :
-                      viewingPlayer.role === 'undercover' ? 'Undercover' : 'Mr. White'}
-                  </span>
+                  {/* Role Label - hidden when easyMode is off (except Mr. White) */}
+                  {(room?.settings?.easyMode !== false || viewingPlayer.role === 'mr_white') && (
+                    <span className={cn(
+                      "text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-sm",
+                      viewingPlayer.role === 'civilian' ? "text-blue-600 dark:text-blue-400 bg-blue-500/10" :
+                        viewingPlayer.role === 'undercover' ? "text-red-500 bg-red-500/10" :
+                          "text-zinc-500 bg-zinc-500/10"
+                    )}>
+                      {viewingPlayer.role === 'civilian' ? 'Dân thường' :
+                        viewingPlayer.role === 'undercover' ? 'Undercover' : 'Mr. White'}
+                    </span>
+                  )}
                 </div>
 
                 <div className="w-full text-center flex flex-col items-center mt-2">

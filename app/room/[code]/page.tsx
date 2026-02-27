@@ -5,13 +5,13 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { startGame, restartGame } from '@/lib/game'
 import { SPECIAL_ROLES } from '@/lib/role-utils'
+import { isSoundEnabled, setSoundEnabled } from '@/lib/sound'
 import type { Room, Player } from '@/types/database'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Slider } from '@/components/ui/slider'
 import { Select, ListBox, ListBoxItem } from '@heroui/react'
 import { removeRecentRoom } from '@/lib/storage'
 
@@ -61,7 +61,22 @@ export default function RoomPage() {
   const [showHelp, setShowHelp] = useState(false)
   const [showRestartConfirm, setShowRestartConfirm] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showSettingsConfirm, setShowSettingsConfirm] = useState(false)
   const [isEditingPlayers, setIsEditingPlayers] = useState(false)
+
+  // Pending settings changes when game is active
+  const [pendingSettings, setPendingSettings] = useState<Partial<Room['settings']> | null>(null)
+
+  // New settings
+  const [soundOn, setSoundOn] = useState(true)
+  const [mrWhiteCanStart, setMrWhiteCanStart] = useState(false)
+  const [randomRoleMode, setRandomRoleMode] = useState(false)
+  const [easyMode, setEasyMode] = useState(true)
+
+  // Initialize sound from localStorage
+  useEffect(() => {
+    setSoundOn(isSoundEnabled())
+  }, [])
 
   // Auto-adjust roles when player count changes
   useEffect(() => {
@@ -86,7 +101,6 @@ export default function RoomPage() {
   const canRemoveMrWhite = mrWhiteCount > 0
 
   useEffect(() => {
-    // Load room data
     const loadRoom = async () => {
       const { data, error } = await supabase
         .from('rooms')
@@ -105,6 +119,17 @@ export default function RoomPage() {
       }
 
       setRoom(data as Room)
+
+      // Initialize states from existing room settings
+      if (data.settings) {
+        if (data.settings.undercoverCount !== undefined) setUndercoverCount(data.settings.undercoverCount)
+        if (data.settings.mrWhiteCount !== undefined) setMrWhiteCount(data.settings.mrWhiteCount)
+        if (data.settings.specialRoles !== undefined) setSpecialRoles(data.settings.specialRoles)
+        if (data.settings.mrWhiteCanStart !== undefined) setMrWhiteCanStart(data.settings.mrWhiteCanStart)
+        if (data.settings.randomRoleMode !== undefined) setRandomRoleMode(data.settings.randomRoleMode)
+        if (data.settings.easyMode !== undefined) setEasyMode(data.settings.easyMode)
+      }
+
       setLoading(false)
     }
 
@@ -177,6 +202,96 @@ export default function RoomPage() {
     }
   }
 
+  const saveSettingsToDB = async (settingsToUpdate: Partial<Room['settings']>) => {
+    if (!room) return false
+    const newSettings = { ...room.settings, ...settingsToUpdate }
+
+    // Also update UI states to match
+    if (settingsToUpdate.mrWhiteCanStart !== undefined) setMrWhiteCanStart(settingsToUpdate.mrWhiteCanStart)
+    if (settingsToUpdate.randomRoleMode !== undefined) setRandomRoleMode(settingsToUpdate.randomRoleMode)
+    if (settingsToUpdate.easyMode !== undefined) setEasyMode(settingsToUpdate.easyMode)
+
+    const { error } = await supabase
+      .from('rooms')
+      .update({ settings: newSettings })
+      .eq('code', code)
+
+    if (error) {
+      addToast({
+        title: 'Lỗi',
+        description: 'Không thể lưu cài đặt',
+        variant: 'error',
+      })
+      return false
+    }
+    return true
+  }
+
+  const handleSettingChange = (key: keyof Room['settings'], value: any) => {
+    // Sound is local-only, handle immediately
+    if (key === 'sound' as any) {
+      setSoundOn(value)
+      setSoundEnabled(value)
+      return
+    }
+
+    // Cập nhật UI ngay lập tức
+    if (key === 'mrWhiteCanStart') setMrWhiteCanStart(value)
+    if (key === 'randomRoleMode') setRandomRoleMode(value)
+    if (key === 'easyMode') setEasyMode(value)
+
+    if (room?.status !== 'waiting') {
+      const savedValue = room?.settings?.[key]
+
+      // Nếu trạng thái mới khác với dữ liệu lưu trên DB thì mới bật modal
+      if (value !== savedValue) {
+        setPendingSettings({ [key]: value })
+        setShowSettingsConfirm(true)
+      } else {
+        setPendingSettings(null)
+      }
+    } else {
+      // Đang setup phòng, lưu ngay không cần hỏi
+      saveSettingsToDB({ [key]: value })
+    }
+  }
+
+  const confirmPendingSettings = async (shouldRestart: boolean) => {
+    if (!pendingSettings) return
+
+    const saved = await saveSettingsToDB(pendingSettings)
+    if (!saved) return
+
+    setPendingSettings(null)
+    setShowSettingsConfirm(false)
+
+    if (shouldRestart) {
+      setShowSettings(false)
+      await handleRestartGame()
+    } else {
+      addToast({
+        title: 'Đã lưu cài đặt',
+        description: 'Cài đặt sẽ được áp dụng ở ván tiếp theo',
+        variant: 'success',
+      })
+    }
+  }
+
+  const discardPendingSettings = () => {
+    // Hoàn tác lại giá trị trên UI giống DB
+    if (pendingSettings && room?.settings) {
+      const key = Object.keys(pendingSettings)[0] as keyof Room['settings']
+      const originalValue = room.settings[key]
+
+      if (key === 'mrWhiteCanStart') setMrWhiteCanStart((originalValue as boolean) ?? false)
+      if (key === 'randomRoleMode') setRandomRoleMode((originalValue as boolean) ?? false)
+      if (key === 'easyMode') setEasyMode((originalValue as boolean) ?? true)
+    }
+
+    setPendingSettings(null)
+    setShowSettingsConfirm(false)
+  }
+
   const handleStartGame = async () => {
     if (!room) return
 
@@ -189,31 +304,33 @@ export default function RoomPage() {
       return
     }
 
-    // Validate roles
-    const totalEnemies = undercoverCount + mrWhiteCount
-    if (totalEnemies === 0) {
-      addToast({
-        title: 'Lỗi',
-        description: 'Cần ít nhất 1 vai phản diện',
-        variant: 'error',
-      })
-      return
-    }
-    const civilianCount = playerCount - undercoverCount - mrWhiteCount
-    if (civilianCount <= 0) {
-      addToast({
-        title: 'Lỗi',
-        description: 'Phải có ít nhất 1 Dân thường!',
-        variant: 'error',
-      })
-      return
-    }
-    if (civilianCount <= undercoverCount + mrWhiteCount) {
-      addToast({
-        title: 'Cảnh báo',
-        description: 'Phe Dân thường đang thiểu số. Game có thể kết thúc rất nhanh.',
-        variant: 'warning',
-      })
+    // Validate roles (skip if random mode)
+    if (!randomRoleMode) {
+      const totalEnemies = undercoverCount + mrWhiteCount
+      if (totalEnemies === 0) {
+        addToast({
+          title: 'Lỗi',
+          description: 'Cần ít nhất 1 vai phản diện',
+          variant: 'error',
+        })
+        return
+      }
+      const civilianCount = playerCount - undercoverCount - mrWhiteCount
+      if (civilianCount <= 0) {
+        addToast({
+          title: 'Lỗi',
+          description: 'Phải có ít nhất 1 Dân thường!',
+          variant: 'error',
+        })
+        return
+      }
+      if (civilianCount <= undercoverCount + mrWhiteCount) {
+        addToast({
+          title: 'Cảnh báo',
+          description: 'Phe Dân thường đang thiểu số. Game có thể kết thúc rất nhanh.',
+          variant: 'warning',
+        })
+      }
     }
 
     // Validate special roles
@@ -251,7 +368,10 @@ export default function RoomPage() {
         settings: {
           undercoverCount,
           mrWhiteCount,
-          specialRoles
+          specialRoles,
+          mrWhiteCanStart,
+          randomRoleMode,
+          easyMode,
         }
       })
       .eq('code', code)
@@ -322,7 +442,7 @@ export default function RoomPage() {
   }
 
   const totalEnemies = undercoverCount + mrWhiteCount
-  const canStart = playerCount >= 3 && (room.status === 'waiting' || isEditingPlayers) && totalEnemies > 0
+  const canStart = playerCount >= 3 && (room.status === 'waiting' || isEditingPlayers) && (totalEnemies > 0 || randomRoleMode)
 
   return (
     <main className="min-h-screen flex flex-col bg-background text-foreground">
@@ -415,7 +535,7 @@ export default function RoomPage() {
                 <div className="flex items-center justify-between p-4">
                   <span className="text-sm font-medium">Dân thường</span>
                   <div className="w-8 h-8 flex items-center justify-center bg-muted/10 rounded-sm font-mono text-sm border border-border">
-                    {civilianCount}
+                    {randomRoleMode ? '?' : civilianCount}
                   </div>
                 </div>
 
@@ -424,19 +544,19 @@ export default function RoomPage() {
                   <span className="text-sm font-medium">Kẻ nằm vùng</span>
                   <div className="flex items-center gap-1">
                     <button
-                      className={`w-8 h-8 flex items-center justify-center border border-border rounded-sm text-muted transition-colors ${!canRemoveUndercover ? 'opacity-30 cursor-not-allowed' : 'hover:bg-muted/10 cursor-pointer'}`}
-                      onClick={() => canRemoveUndercover && setUndercoverCount(prev => prev - 1)}
-                      disabled={!canRemoveUndercover}
+                      className={`w-8 h-8 flex items-center justify-center border border-border rounded-sm text-muted transition-colors ${(!canRemoveUndercover || randomRoleMode) ? 'opacity-30 cursor-not-allowed' : 'hover:bg-muted/10 cursor-pointer'}`}
+                      onClick={() => canRemoveUndercover && !randomRoleMode && setUndercoverCount(prev => prev - 1)}
+                      disabled={!canRemoveUndercover || randomRoleMode}
                     >
                       −
                     </button>
                     <div className="w-8 h-8 flex items-center justify-center bg-muted/10 rounded-sm font-mono text-sm border border-border">
-                      {undercoverCount}
+                      {randomRoleMode ? '?' : undercoverCount}
                     </div>
                     <button
-                      className={`w-8 h-8 flex items-center justify-center border border-border rounded-sm text-muted transition-colors ${!canAddUndercover ? 'opacity-30 cursor-not-allowed' : 'hover:bg-muted/10 cursor-pointer'}`}
-                      onClick={() => canAddUndercover && setUndercoverCount(prev => prev + 1)}
-                      disabled={!canAddUndercover}
+                      className={`w-8 h-8 flex items-center justify-center border border-border rounded-sm text-muted transition-colors ${(!canAddUndercover || randomRoleMode) ? 'opacity-30 cursor-not-allowed' : 'hover:bg-muted/10 cursor-pointer'}`}
+                      onClick={() => canAddUndercover && !randomRoleMode && setUndercoverCount(prev => prev + 1)}
+                      disabled={!canAddUndercover || randomRoleMode}
                     >
                       +
                     </button>
@@ -448,19 +568,19 @@ export default function RoomPage() {
                   <span className="text-sm font-medium">Mr. White</span>
                   <div className="flex items-center gap-1">
                     <button
-                      className={`w-8 h-8 flex items-center justify-center border border-border rounded-sm text-muted transition-colors ${!canRemoveMrWhite ? 'opacity-30 cursor-not-allowed' : 'hover:bg-muted/10 cursor-pointer'}`}
-                      onClick={() => canRemoveMrWhite && setMrWhiteCount(prev => prev - 1)}
-                      disabled={!canRemoveMrWhite}
+                      className={`w-8 h-8 flex items-center justify-center border border-border rounded-sm text-muted transition-colors ${(!canRemoveMrWhite || randomRoleMode) ? 'opacity-30 cursor-not-allowed' : 'hover:bg-muted/10 cursor-pointer'}`}
+                      onClick={() => canRemoveMrWhite && !randomRoleMode && setMrWhiteCount(prev => prev - 1)}
+                      disabled={!canRemoveMrWhite || randomRoleMode}
                     >
                       −
                     </button>
                     <div className="w-8 h-8 flex items-center justify-center bg-muted/10 rounded-sm font-mono text-sm border border-border">
-                      {mrWhiteCount}
+                      {randomRoleMode ? '?' : mrWhiteCount}
                     </div>
                     <button
-                      className={`w-8 h-8 flex items-center justify-center border border-border rounded-sm text-muted transition-colors ${!canAddMrWhite ? 'opacity-30 cursor-not-allowed' : 'hover:bg-muted/10 cursor-pointer'}`}
-                      onClick={() => canAddMrWhite && setMrWhiteCount(prev => prev + 1)}
-                      disabled={!canAddMrWhite}
+                      className={`w-8 h-8 flex items-center justify-center border border-border rounded-sm text-muted transition-colors ${(!canAddMrWhite || randomRoleMode) ? 'opacity-30 cursor-not-allowed' : 'hover:bg-muted/10 cursor-pointer'}`}
+                      onClick={() => canAddMrWhite && !randomRoleMode && setMrWhiteCount(prev => prev + 1)}
+                      disabled={!canAddMrWhite || randomRoleMode}
                     >
                       +
                     </button>
@@ -555,6 +675,7 @@ export default function RoomPage() {
               </DialogContent>
             </Dialog>
           </div>
+
 
           {/* Words Setting */}
           <Card className="w-full max-w-sm mb-8">
@@ -737,10 +858,10 @@ export default function RoomPage() {
         <Button
           variant="outline"
           size="icon"
-          className="rounded-full shadow-sm bg-background"
+          className="w-10 h-10 rounded-full shadow-md bg-background"
           onClick={() => setShowSettings(true)}
         >
-          <svg className="w-4 h-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-6 h-6 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
@@ -748,10 +869,10 @@ export default function RoomPage() {
         <Button
           variant="outline"
           size="icon"
-          className="rounded-full shadow-sm bg-background"
+          className="rounded-full shadow-sm bg-background w-10 h-10"
           onClick={() => setShowHelp(true)}
         >
-          <svg className="w-4 h-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-6 h-6 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </Button>
@@ -759,28 +880,128 @@ export default function RoomPage() {
 
       {/* Settings Dialog */}
       <Dialog open={showSettings} onOpenChange={setShowSettings}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="font-serif">Cài Đặt Phòng</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <Button
-              variant="outline"
-              onClick={() => router.push(`/history/${code}`)}
-              className="w-full justify-start font-medium"
-            >
-              Lịch Sử Ván Chơi Của Phòng
-            </Button>
-            {room.status === 'waiting' && (
-              <Button
-                variant="destructive"
-                onClick={handleDeleteRoom}
-                isDisabled={isDeleting}
-                className="w-full justify-start font-medium border border-transparent"
+        <DialogContent className="max-h-[85vh] p-0 gap-0 sm:max-w-md rounded-lg overflow-hidden border-border shadow-2xl">
+          <div className="px-6 pt-6 pb-4 border-b border-border bg-background text-left w-full">
+            <DialogTitle className="font-serif text-xl">Cài Đặt Phòng</DialogTitle>
+          </div>
+          <div className="overflow-y-auto flex flex-col">
+            {/* Toggles */}
+            <div className="flex flex-col divide-y divide-border">
+              {/* Sound */}
+              <div className="flex items-center justify-between px-6 py-4">
+                <div>
+                  <span className="text-sm font-semibold text-foreground">Hiệu ứng âm thanh</span>
+                </div>
+                <button
+                  onClick={() => handleSettingChange('sound' as any, !soundOn)}
+                  className={`relative w-11 h-6 rounded-full transition-colors duration-200 shrink-0 ${soundOn ? 'bg-blue-500' : 'bg-muted/30 border border-border'}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ${soundOn ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
+              </div>
+
+              {/* Mr. White Can Start */}
+              <div className="flex items-center justify-between px-6 py-4">
+                <div className="flex-1 pr-4">
+                  <span className="text-sm font-semibold text-foreground">Mr. White có thể bắt đầu</span>
+                  <p className="text-[11px] text-muted leading-tight mt-0.5">Mr. White có thể là người đầu tiên mô tả</p>
+                </div>
+                <button
+                  onClick={() => handleSettingChange('mrWhiteCanStart', !mrWhiteCanStart)}
+                  className={`relative w-11 h-6 rounded-full transition-colors duration-200 shrink-0 ${mrWhiteCanStart ? 'bg-blue-500' : 'bg-muted/30 border border-border'}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ${mrWhiteCanStart ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
+              </div>
+
+              {/* Random Role Mode */}
+              <div className="flex items-center justify-between px-6 py-4">
+                <div className="flex-1 pr-4">
+                  <span className="text-sm font-semibold text-foreground">Chế độ ngẫu nhiên</span>
+                  <p className="text-[11px] text-muted leading-tight mt-0.5">Số lượng vai trò thay đổi ngẫu nhiên sau mỗi ván mới</p>
+                </div>
+                <button
+                  onClick={() => handleSettingChange('randomRoleMode', !randomRoleMode)}
+                  className={`relative w-11 h-6 rounded-full transition-colors duration-200 shrink-0 ${randomRoleMode ? 'bg-blue-500' : 'bg-muted/30 border border-border'}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ${randomRoleMode ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
+              </div>
+
+              {/* Easy Mode */}
+              <div className="flex items-center justify-between px-6 py-4">
+                <div className="flex-1 pr-4">
+                  <span className="text-sm font-semibold text-foreground">Chế độ dễ</span>
+                  <p className="text-[11px] text-muted leading-tight mt-0.5">Tất cả người chơi đều biết vai trò của mình</p>
+                </div>
+                <button
+                  onClick={() => handleSettingChange('easyMode', !easyMode)}
+                  className={`relative w-11 h-6 rounded-full transition-colors duration-200 shrink-0 ${easyMode ? 'bg-blue-500' : 'bg-muted/30 border border-border'}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ${easyMode ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="px-6 py-4 space-y-3 border-t border-border mt-auto">
+              {/* <Button
+                variant="outline"
+                onClick={() => router.push(`/history/${code}`)}
+                className="w-full justify-start font-medium"
               >
-                {isDeleting ? 'Đang hủy...' : 'Giải Tán Phòng'}
+                Lịch Sử Ván Chơi Của Phòng
+              </Button> */}
+              {room.status === 'waiting' && (
+                <Button
+                  variant="destructive"
+                  onClick={handleDeleteRoom}
+                  isDisabled={isDeleting}
+                  className="w-full justify-start font-medium border border-transparent"
+                >
+                  {isDeleting ? 'Đang hủy...' : 'Giải Tán Phòng'}
+                </Button>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Settings Change Confirm Dialog */}
+      <Dialog open={showSettingsConfirm} onOpenChange={(open) => !open && discardPendingSettings()}>
+        <DialogContent className="sm:max-w-md p-6">
+          <DialogHeader className="mb-4">
+            <DialogTitle className="font-serif text-xl flex items-center gap-2">
+              Thay đổi cài đặt
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-foreground/80 leading-relaxed">
+              Áp dụng thay đổi ngay lúc này sẽ bắt đầu một ván chơi mới. Bạn muốn xử lý thế nào với cài đặt này?
+            </p>
+            <div className="flex flex-col gap-3 pt-2 w-full">
+              <Button
+                variant="primary"
+                className="w-full font-medium"
+                onClick={() => confirmPendingSettings(true)}
+              >
+                Vâng, ván mới ngay!
               </Button>
-            )}
+              <Button
+                variant="outline"
+                className="w-full font-medium"
+                onClick={() => confirmPendingSettings(false)}
+              >
+                Lưu và áp dụng ở ván sau
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full font-medium text-muted hover:text-foreground"
+                onClick={discardPendingSettings}
+              >
+                Hủy thay đổi
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

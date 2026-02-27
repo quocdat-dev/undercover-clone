@@ -74,7 +74,28 @@ export function assignRoles(players: Player[], settings?: RoomSettings): Player[
   // Default settings if not provided
   let { undercoverCount, mrWhiteCount } = getDefaultRoleSettings(totalPlayers)
 
-  if (settings) {
+  if (settings?.randomRoleMode) {
+    // Random mode: generate valid random role counts
+    const maxEnemies = Math.floor(totalPlayers / 2)
+    // Undercover: 1 to floor(totalPlayers / 3), at least 1
+    const maxU = Math.max(1, Math.floor(totalPlayers / 3))
+    undercoverCount = 1 + Math.floor(Math.random() * maxU)
+    // Mr. White: 0 to floor(totalPlayers / 5), but only if 5+ players
+    const maxW = totalPlayers >= 5 ? Math.max(1, Math.floor(totalPlayers / 5)) : 0
+    mrWhiteCount = Math.floor(Math.random() * (maxW + 1))
+    // Clamp total enemies to ensure civilians > enemies
+    if (undercoverCount + mrWhiteCount > maxEnemies) {
+      const overflow = (undercoverCount + mrWhiteCount) - maxEnemies
+      mrWhiteCount = Math.max(0, mrWhiteCount - overflow)
+      if (undercoverCount + mrWhiteCount > maxEnemies) {
+        undercoverCount = maxEnemies - mrWhiteCount
+      }
+    }
+    // Ensure at least 1 enemy
+    if (undercoverCount + mrWhiteCount === 0) {
+      undercoverCount = 1
+    }
+  } else if (settings) {
     const normalized = normalizeRoleSettings(
       totalPlayers,
       settings.undercoverCount,

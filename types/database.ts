@@ -4,6 +4,9 @@ export interface RoomSettings {
   undercoverCount: number
   mrWhiteCount: number
   specialRoles?: string[]
+  mrWhiteCanStart?: boolean
+  randomRoleMode?: boolean
+  easyMode?: boolean
 }
 
 export interface Room {
