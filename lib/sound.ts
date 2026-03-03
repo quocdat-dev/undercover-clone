@@ -26,10 +26,10 @@ export function playSound(name: 'card_flip' | 'eliminate' | 'game_end' | 'boomer
   if (!isSoundEnabled()) return
 
   const soundMap: Record<string, string> = {
-    card_flip: '/sounds/card-flip.mp3',
-    eliminate: '/sounds/eliminate.mp3',
-    game_end: '/sounds/game-end.mp3',
-    boomerang: '/sounds/boomerang.mp3',
+    card_flip: '/sounds/card-flip.wav',
+    eliminate: '/sounds/eliminate.wav',
+    game_end: '/sounds/game-end.wav',
+    boomerang: '/sounds/boomerang.wav',
   }
 
   const src = soundMap[name]

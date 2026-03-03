@@ -147,10 +147,10 @@ export default function Home() {
 
           {/* Create Room */}
           <div className="space-y-4">
-            <h2 className="text-sm font-semibold text-foreground font-serif border-b border-border pb-2 flex items-center gap-2">
+            {/* <h2 className="text-sm font-semibold text-foreground font-serif border-b border-border pb-2 flex items-center gap-2">
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
               Tạo Ván Mới
-            </h2>
+            </h2> */}
             <Button
               variant="primary"
               className="w-full h-12 text-sm font-bold tracking-wide transition-all hover:scale-[1.02] active:scale-[0.98] relative overflow-hidden group/btn"
@@ -162,14 +162,14 @@ export default function Home() {
             </Button>
           </div>
 
-          <div className="relative flex items-center py-2">
+          {/* <div className="relative flex items-center py-2">
             <div className="flex-grow border-t border-border"></div>
             <span className="flex-shrink-0 mx-4 text-muted/50 text-[10px] font-bold uppercase tracking-[0.2em] bg-background px-2">Hoặc</span>
             <div className="flex-grow border-t border-border"></div>
-          </div>
+          </div> */}
 
           {/* Join Room */}
-          <div className="space-y-4">
+          {/* <div className="space-y-4">
             <h2 className="text-sm font-semibold text-foreground font-serif border-b border-border pb-2 flex items-center gap-2">
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" /></svg>
               Tham Gia Ván
@@ -205,7 +205,7 @@ export default function Home() {
                 </span>
               </Button>
             </div>
-          </div>
+          </div> */}
         </div>
 
         {/* Recent Rooms */}
